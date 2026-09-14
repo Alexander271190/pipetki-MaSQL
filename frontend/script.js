@@ -840,8 +840,8 @@ async function savePipette(e) {
       await apiRequest('/pipettes', 'POST', data);
       showToast('Пипетка добавлена', 'success');
     }
-    await loadPipetteData();
     closeModal();
+    await loadPipetteData();
   } catch (error) {
     showToast(error.message || 'Ошибка сохранения', 'error');
   }
