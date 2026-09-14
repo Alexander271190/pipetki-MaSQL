@@ -28,23 +28,189 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #ffffff; colo
 .toolbar input:focus, .toolbar select:focus { border-color: #6366f1; }
 
 /* ========== КНОПКИ ========== */
-.btn { padding: 9px 16px; border: none; border-radius: 8px; font-size: .9rem; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-family: inherit; }
-.btn-primary { background: #4f46e5; color: #fff; }
-.btn-primary:hover { background: #4338ca; }
-.btn-success { background: #16a34a; color: #fff; }
-.btn-success:hover { background: #15803d; }
-.btn-danger { background: #dc2626; color: #fff; }
-.btn-danger:hover { background: #b91c1c; }
-.btn-secondary { background: #e5e7eb; color: #374151; }
-.btn-secondary:hover { background: #d1d5db; }
-.btn-info { background: #0ea5e9; color: #fff; }
-.btn-info:hover { background: #0284c7; }
-.btn-warning { background: #f59e0b; color: #fff; }
-.btn-warning:hover { background: #d97706; }
-.btn-outline { background: transparent; border: 1px solid #d1d5db; color: #374151; }
-.btn-outline:hover { background: #f1f5f9; }
-.btn-sm { padding: 5px 10px; font-size: .8rem; }
+.btn {
+  position: relative;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 12px;
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .2px;
+  cursor: pointer;
+  transition: all .25s cubic-bezier(.4, 0, .2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+  font-family: inherit;
+  user-select: none;
+  overflow: hidden;
+  background-clip: padding-box;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 6px rgba(0,0,0,.05);
+  -webkit-tap-highlight-color: transparent;
+}
 
+/* Мягкий внутренний блик сверху */
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,.18) 0%,
+    rgba(255,255,255,.05) 45%,
+    rgba(255,255,255,0) 60%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s;
+}
+.btn:hover::before { opacity: 1; }
+
+/* Наведение — «подъём» */
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.12), 0 2px 4px rgba(0,0,0,.06);
+}
+
+/* Нажатие — «вдавливание» */
+.btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,.1);
+  transition-duration: .08s;
+}
+
+/* Фокус с клавиатуры */
+.btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, .3),
+    0 2px 8px rgba(0,0,0,.08);
+}
+
+/* Неактивная кнопка */
+.btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: grayscale(.25);
+}
+
+/* ---- ЦВЕТОВЫЕ ВАРИАНТЫ ---- */
+
+.btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(79,70,229,.12), 0 3px 10px rgba(79,70,229,.25);
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #7c7ff0 0%, #5b52e8 100%);
+  box-shadow: 0 6px 18px rgba(79,70,229,.38), 0 2px 4px rgba(79,70,229,.2);
+}
+.btn-primary:active {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(22,163,74,.12), 0 3px 10px rgba(22,163,74,.25);
+}
+.btn-success:hover {
+  background: linear-gradient(135deg, #34d16a 0%, #1cb254 100%);
+  box-shadow: 0 6px 18px rgba(22,163,74,.38), 0 2px 4px rgba(22,163,74,.2);
+}
+.btn-success:active {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(220,38,38,.12), 0 3px 10px rgba(220,38,38,.25);
+}
+.btn-danger:hover {
+  background: linear-gradient(135deg, #f45c5c 0%, #e53535 100%);
+  box-shadow: 0 6px 18px rgba(220,38,38,.38), 0 2px 4px rgba(220,38,38,.2);
+}
+.btn-danger:active {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%);
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 6px rgba(0,0,0,.04);
+}
+.btn-secondary:hover {
+  background: linear-gradient(135deg, #ffffff 0%, #e9ebef 100%);
+  border-color: #d1d5db;
+  color: #111827;
+  box-shadow: 0 6px 16px rgba(0,0,0,.1), 0 2px 4px rgba(0,0,0,.05);
+}
+.btn-secondary:active {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+}
+
+.btn-info {
+  background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(14,165,233,.12), 0 3px 10px rgba(14,165,233,.25);
+}
+.btn-info:hover {
+  background: linear-gradient(135deg, #4cc4f8 0%, #0e9dd9 100%);
+  box-shadow: 0 6px 18px rgba(14,165,233,.38), 0 2px 4px rgba(14,165,233,.2);
+}
+.btn-info:active {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(120,53,15,.2);
+  box-shadow: 0 1px 2px rgba(245,158,11,.15), 0 3px 10px rgba(245,158,11,.28);
+}
+.btn-warning:hover {
+  background: linear-gradient(135deg, #fcd34d 0%, #f59e0b 100%);
+  box-shadow: 0 6px 18px rgba(245,158,11,.45), 0 2px 4px rgba(245,158,11,.25);
+}
+.btn-warning:active {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1.5px solid #d1d5db;
+  color: #374151;
+  box-shadow: none;
+}
+.btn-outline:hover {
+  background: #f8fafc;
+  border-color: #9ca3af;
+  color: #111827;
+  box-shadow: 0 4px 12px rgba(0,0,0,.08);
+}
+
+/* ---- РАЗМЕРЫ ---- */
+
+.btn-sm {
+  padding: 7px 13px;
+  font-size: .8rem;
+  border-radius: 10px;
+  gap: 5px;
+}
+
+.btn-icon-only {
+  padding: 7px 10px;
+  border-radius: 10px;
+}
+.btn-sm.btn-icon-only {
+  padding: 6px 8px;
+  border-radius: 9px;
+}
 /* ========== ТАБЛИЦА ========== */
 .table-wrapper { width: 100%; overflow-x: auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
 table { width: 100%; border-collapse: collapse; background: #fff; min-width: 820px; }
