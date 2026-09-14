@@ -1001,14 +1001,12 @@ async function addCalibrationRecord() {
     await apiRequest(`/pipettes/${currentHistoryId}/calibration`, 'POST', { date, cert, result, org, note });
     showToast('Запись о поверке добавлена', 'success');
     closeCalibrationForm();
+    closeHistoryModal();
     await loadPipetteData();
-    const p = pipettes.find(x => x.id === currentHistoryId);
-    if (p) await renderHistoryContent(p);
   } catch (error) {
     showToast(error.message || 'Ошибка сохранения', 'error');
   }
 }
-
 // ============================================================
 // ЭКСПОРТ
 // ============================================================
@@ -1487,6 +1485,7 @@ async function saveFieldsSettings() {
   try {
     await apiRequest('/settings/fields', 'PUT', _cachedFields);
     showToast('Поля сохранены', 'success');
+    closeSettingsModal();
   } catch (e) {
     showToast(e.message, 'error');
   }
@@ -1563,6 +1562,7 @@ async function saveDepartmentsFull() {
     showToast('Отделы сохранены', 'success');
     await loadDepartments();
     _filterRendered = false;
+    closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
 // ============================================================
@@ -1636,6 +1636,7 @@ async function saveSubdivisions() {
     showToast('Подразделения сохранены', 'success');
     await loadSubdivisions();
     _filterRendered = false;
+    closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
 async function renderFiltersSettings() {
@@ -1742,6 +1743,7 @@ async function saveFilters() {
     showToast('Фильтры сохранены', 'success');
     await loadFilterConfig();
     _filterRendered = false;
+    closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -1786,8 +1788,13 @@ async function renderExportSettings() {
 
 async function saveExportSettings() {
   const selected = Array.from(document.querySelectorAll('.exp-field-cb:checked')).map(cb => cb.value);
-  await apiRequest('/settings/export', 'PUT', selected);
-  showToast('Настройки экспорта сохранены', 'success');
+  try {
+    await apiRequest('/settings/export', 'PUT', selected);
+    showToast('Настройки экспорта сохранены', 'success');
+    closeSettingsModal();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 // ============================================================
@@ -1959,16 +1966,16 @@ async function saveUserSetting() {
 
   if (!login || !fullName || !position) { showToast('Заполните поля', 'error'); return; }
   if (!id && !password) { showToast('Укажите пароль для нового пользователя', 'error'); return; }
+
   const onlyOwnCb = document.getElementById('usr-only-own-dept');
   const onlyOwnDepartment = onlyOwnCb ? onlyOwnCb.checked : false;
-  
+
   const extraPermissions = [];
   if (role !== 'admin') {
     document.querySelectorAll('#usr-permissions input[type="checkbox"]:checked').forEach(cb => {
       extraPermissions.push(cb.value);
     });
   }
-  
 
   try {
     const payload = { login, password, fullName, position, department, role, onlyOwnDepartment, extraPermissions };
@@ -1980,22 +1987,22 @@ async function saveUserSetting() {
       await apiRequest('/users', 'POST', payload);
       showToast('Пользователь создан', 'success');
     }
-    renderUsersSettings();
 
-    // Если редактируем себя — обновляем сессию
     if (id === currentUser.id) {
       const me = (await apiRequest('/users')).find(x => x.id === id);
       if (me) {
         currentUser.fullName = me.fullName || me.full_name;
         currentUser.position = me.position;
         currentUser.department = me.department;
-       currentUser.role = me.role;
-       currentUser.onlyOwnDepartment = !!me.onlyOwnDepartment;          
-       currentUser.extraPermissions = me.extraPermissions || [];
+        currentUser.role = me.role;
+        currentUser.onlyOwnDepartment = !!me.onlyOwnDepartment;
+        currentUser.extraPermissions = me.extraPermissions || [];
         setSession(currentUser, authToken);
         renderAuthUI();
       }
     }
+
+    closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
 async function deleteUserSetting(id) {
