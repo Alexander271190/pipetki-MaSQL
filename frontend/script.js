@@ -2036,10 +2036,15 @@ async function renderSystemSettings() {
 
 async function saveSystemSetting() {
   const wd = document.getElementById('sys-warn-days').value;
-  await apiRequest('/settings/system', 'PUT', { warn_days: String(wd) });
-  settings.warnDays = parseInt(wd) || 30;
-  showToast('Настройки сохранены', 'success');
-  render();
+  try {
+    await apiRequest('/settings/system', 'PUT', { warn_days: String(wd) });
+    settings.warnDays = parseInt(wd) || 30;
+    showToast('Настройки сохранены', 'success');
+    closeSettingsModal();
+    render();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 // ============================================================
