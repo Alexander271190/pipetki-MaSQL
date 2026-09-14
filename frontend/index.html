@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Краевая клиническая больница клинико- диагностиченская лаборатория </title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+
+<!-- БЛОК АВТОРИЗАЦИИ -->
+<div class="auth-container" id="auth-container">
+  <div class="auth-box">
+    <div class="auth-box-overlay">
+      <div class="auth-header">
+        <div class="auth-title-sub">Клинико-диагностическая лаборатория</div>
+      </div>
+      <form class="auth-form" id="login-form" onsubmit="loginUser(event)">
+        <div class="form-group">
+          <label>Логин</label>
+          <input type="text" id="login-username" placeholder="Введите логин" required>
+        </div>
+        <div class="form-group">
+          <label>Пароль</label>
+          <input type="password" id="login-password" placeholder="Введите пароль" required>
+        </div>
+        <div id="login-error" class="auth-error"></div>
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-right-to-bracket"></i> Войти
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+  
+<!-- ОСНОВНОЙ КОНТЕНТ -->
+<div class="main-content" id="main-content">
+  <div class="header">
+    <h1><span class="logo">🔬</span> КГБУЗ Краевая клиническая больница КДЛ - учёт пипеток и их поверок</h1>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div class="header-stats">
+        <div class="stat-card ok"><div class="num" id="stat-ok">0</div><div class="label">В норме</div></div>
+        <div class="stat-card warn"><div class="num" id="stat-warn">0</div><div class="label">Скоро поверка</div></div>
+        <div class="stat-card danger"><div class="num" id="stat-danger">0</div><div class="label">Просрочены</div></div>
+        <div class="stat-card"><div class="num" id="stat-total">0</div><div class="label">Всего</div></div>
+      </div>
+      <div class="user-info" id="user-info">
+        <span class="name" id="user-fullname">Имя</span>
+        <span class="position" id="user-position">Должность</span>
+        <button class="btn btn-sm" id="btn-impersonate-stop" style="display:none;" onclick="stopImpersonate()">⬅️ Вернуться</button>
+        <button class="btn btn-sm" onclick="logoutUser()">Выйти</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="alert-banner" id="alert-banner">
+      <span class="icon">⚠️</span>
+      <span id="alert-text"></span>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+  <input type="text" id="search" placeholder="🔍 Поиск по номеру, модели, отделу, ответственному…" style="flex:1;min-width:200px">
+
+  <div style="position:relative;display:inline-block;">
+    <button class="btn btn-secondary" onclick="toggleFilterPanel()">🔍 Фильтр</button>
+
+    <div class="filter-panel" id="filter-panel">
+      <div id="filter-fields-container"></div>
+
+      <div class="filter-actions">
+        <button class="btn btn-secondary btn-sm" onclick="resetFilters()">
+          <i class="fa-solid fa-rotate-left"></i> Сбросить
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="applyFilters()">
+          <i class="fa-solid fa-check"></i> Применить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary btn-add-pipette" onclick="openModal()">➕ Добавить пипетку</button>
+  <button class="btn btn-warning btn-import" onclick="openImportModal()">📥 Импорт</button>
+  <button class="btn btn-warning btn-settings" onclick="openSettingsModal()">⚙️ Настройки</button>
+
+  <div class="dropdown btn-export" id="export-dropdown" style="position:relative;display:inline-block;">
+    <button class="btn btn-secondary" onclick="toggleExportMenu(event)">📤 Экспорт ▾</button>
+    <div id="export-menu" class="dropdown-menu">
+      <button class="dropdown-item" onclick="exportToExcel(); closeExportMenu();">📊 Excel (CSV)</button>
+      <button class="dropdown-item" onclick="exportToPDF(); closeExportMenu();">🖨️ PDF</button>
+    </div>
+  </div>
+</div>
+
+    <div class="table-wrapper">
+      <table id="pipettes-table">
+        <thead>
+          <tr>
+            <th onclick="sortBy('id')">ID <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('model')">Модель <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('volume')">Объём <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('department')">Отдел <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('lastCalibration')">Поверка <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('nextCalibration')">Следующая <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('responsible')">Ответственный <span class="sort-arrow"></span></th>
+            <th>Статус</th>
+            <th id="actions-header">Действия</th>
+          </tr>
+        </thead>
+        <tbody id="pipettes-body"></tbody>
+      </table>
+    </div>
+
+    <div class="empty-state" id="empty-state" style="display:none">
+      <div class="icon">🔬</div>
+      <p>Пипеток пока нет. Нажмите «Добавить пипетку», чтобы начать.</p>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНЫЕ ОКНА -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">Добавить пипетку</h2>
+    <form id="pipette-form" onsubmit="savePipette(event)">
+      <input type="hidden" id="edit-id">
+      <div id="form-fields-container"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+        <button type="submit" class="btn btn-success">💾 Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="quick-cal-modal">
+  <div class="modal">
+    <h2>📋 Быстрая поверка</h2>
+    <div id="quick-cal-pipette-info" style="margin-bottom:15px;padding:10px;background:#f8fafc;border-radius:8px;"></div>
+    <form id="quick-cal-form">
+      <input type="hidden" id="quick-cal-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Дата поверки *</label>
+          <input type="date" id="quick-cal-date" required>
+        </div>
+        <div class="form-group">
+          <label>Номер свидетельства</label>
+          <input type="text" id="quick-cal-cert" placeholder="напр. С-АБ-1234567/2025">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Результат</label>
+          <select id="quick-cal-result">
+            <option value="pass">Годен</option>
+            <option value="fail">Брак</option>
+            <option value="wip">В процессе</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Поверяющая организация</label>
+          <input type="text" id="quick-cal-org" placeholder="напр. ФБУ «Красноярский ЦСМ»">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Примечание</label>
+        <textarea id="quick-cal-note" rows="2" placeholder="результаты, отклонения, особые отметки"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeQuickCalModal()">Отмена</button>
+        <button type="button" class="btn btn-success" onclick="saveQuickCalibration()">💾 Записать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="history-modal">
+  <div class="modal modal-lg">
+    <h2 id="history-title">История поверок</h2>
+    <div id="history-content"></div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeHistoryModal()">Закрыть</button>
+      <button class="btn btn-info admin-only senior-only" onclick="openCalibrationForm()">➕ Добавить поверку</button>
+    </div>
+    <div id="calibration-form-wrap" style="display:none;margin-top:20px;padding-top:20px;border-top:2px solid #e2e8f0">
+      <h3 style="margin-bottom:15px;font-size:1rem;color:#1e293b">Новая запись о поверке</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Дата поверки *</label>
+          <input type="date" id="cal-date" required>
+        </div>
+        <div class="form-group">
+          <label>Номер свидетельства</label>
+          <input type="text" id="cal-cert" placeholder="напр. С-АБ-1234567/2025">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Результат</label>
+          <select id="cal-result">
+            <option value="pass">Годен</option>
+            <option value="fail">Брак</option>
+            <option value="wip">В процессе</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Поверяющая организация</label>
+          <input type="text" id="cal-org" placeholder="напр. ФБУ «Красноярский ЦСМ»">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Примечание</label>
+        <textarea id="cal-note" rows="2" placeholder="результаты, отклонения, особые отметки"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeCalibrationForm()">Отмена</button>
+        <button type="button" class="btn btn-success" onclick="addCalibrationRecord()">💾 Записать</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="reminder-overlay" id="reminder-overlay">
+  <div class="reminder-box">
+    <div class="reminder-header">
+      <div class="reminder-icon" id="reminder-icon">🔔</div>
+      <div class="reminder-title" id="reminder-title">Напоминание о поверках</div>
+      <div class="reminder-subtitle" id="reminder-subtitle"></div>
+    </div>
+    <div id="reminder-body"></div>
+    <div class="reminder-actions">
+      <button class="btn btn-secondary" onclick="closeReminder(false)">Позже</button>
+      <button class="btn btn-success" onclick="closeReminder(true)">✅ Понятно</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Модалка импорта -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <h2>📥 Импорт данных</h2>
+    <div class="form-group">
+      <label>Формат файла</label>
+      <select id="import-format">
+        <option value="json">JSON (полный дамп)</option>
+        <option value="csv">CSV (таблица)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Файл</label>
+      <input type="file" id="import-file" accept=".json,.csv">
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Отмена</button>
+      <button type="button" class="btn btn-success" onclick="handleImport()">📥 Загрузить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА НАСТРОЕК -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal modal-lg">
+    <h2>⚙️ Настройки системы</h2>
+
+    <div class="settings-tabs">
+      <button class="tab-btn active" data-tab="fields" onclick="switchSettingsTab('fields')">
+        <i class="fa-solid fa-list"></i> Поля формы
+      </button>
+      <button class="tab-btn" data-tab="departments" onclick="switchSettingsTab('departments')">
+        <i class="fa-solid fa-building"></i> Отделы
+      </button>
+      <button class="tab-btn" data-tab="filters" onclick="switchSettingsTab('filters')">
+        <i class="fa-solid fa-filter"></i> Фильтры
+      </button>
+      <button class="tab-btn" data-tab="export" onclick="switchSettingsTab('export')">
+        <i class="fa-solid fa-file-export"></i> Экспорт
+      </button>
+      <button class="tab-btn" data-tab="users" onclick="switchSettingsTab('users')">
+        <i class="fa-solid fa-users"></i> Пользователи
+      </button>
+      <button class="tab-btn" data-tab="system" onclick="switchSettingsTab('system')">
+        <i class="fa-solid fa-gear"></i> Система
+      </button>
+      <button class="tab-btn" data-tab="log" onclick="switchSettingsTab('log')">
+        <i class="fa-solid fa-scroll"></i> Лог
+      </button>
+      <button class="tab-btn" data-tab="backup" onclick="switchSettingsTab('backup')">
+        <i class="fa-solid fa-database"></i> Бэкап
+      </button>
+    </div>
+
+    <div id="settings-content"></div>
+
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeSettingsModal()">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+  <div class="modal-overlay" id="backup-modal">
+  <div class="modal modal-lg">
+    <h2>🔄 Восстановление из бэкапа</h2>
+    <div id="backup-list-container" style="margin-bottom:20px;"></div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeBackupModal()">Закрыть</button>
+    </div>
+  </div>
+</div>
+  
+<div class="toast" id="toast"></div>
+
+</body>
+</html>
