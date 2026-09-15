@@ -231,28 +231,28 @@ async function seedInitialData() {
     };
 
     const insPip = `INSERT INTO pipettes
-      (id, serial, manufacturer, model, volume, department \`interval\`,
+      (id, serial, manufacturer, model, volume, department, \`interval\`,
        last_calibration, cert, last_result, active, responsible, location, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     await pool.query(insPip, ['P-001', 'EP2024001', 'Eppendorf', 'Research Plus', '1000', 'Гематологический отдел',
-      'Клинико-диагностическая лаборатория', 12, ago(11), 'С-АБ-1234567/2025', 'pass', 1,
+       12, ago(11), 'С-АБ-1234567/2025', 'pass', 1,
       'Иванова М.С.', 'Лаб. 201, шкаф 3', '']);
 
     await pool.query(insPip, ['P-002', 'EP2024002', 'Eppendorf', 'Research Plus', '100', 'Биохимический отдел',
-      'Клинико-диагностическая лаборатория', 12, ago(10), 'С-АБ-1234568/2025', 'pass', 1,
+       12, ago(10), 'С-АБ-1234568/2025', 'pass', 1,
       'Петров А.В.', 'Лаб. 201, шкаф 3', '']);
 
     await pool.query(insPip, ['P-003', 'GT2023005', 'Gilson', 'Pipetman L', '5000', 'Коагулогический отдел',
-      'Клинико-диагностическая лаборатория', 6, ago(7), 'С-АБ-1234569/2025', 'pass', 1,
+      6, ago(7), 'С-АБ-1234569/2025', 'pass', 1,
       'Иванова М.С.', 'Лаб. 105', 'Требует внеочередной проверки']);
 
     await pool.query(insPip, ['P-004', 'BT2022003', 'Biohit', 'mLINE', '200', 'Экспресс отдел',
-      'Экспресс-лаборатория', 12, ago(14), 'С-АБ-9876546/2024', 'pass', 1,
+       12, ago(14), 'С-АБ-9876546/2024', 'pass', 1,
       'Сидорова Е.К.', 'Лаб. 302', '']);
 
     await pool.query(insPip, ['P-005', 'TR2024008', 'Thermo', 'Finnpipette F2', '20', 'Серологический отдел',
-      'Микробиологическая лаборатория', 12, ago(2), 'С-АБ-1234570/2025', 'pass', 0,
+      12, ago(2), 'С-АБ-1234570/2025', 'pass', 0,
       'Петров А.В.', 'Склад', 'В резерве']);
 
     // История поверок
