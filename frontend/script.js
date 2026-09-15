@@ -2260,18 +2260,26 @@ async function saveUserSetting() {
     }
 
     if (id === currentUser.id) {
-      const me = (await apiRequest('/users')).find(x => x.id === id);
-      if (me) {
-        currentUser.fullName = me.fullName || me.full_name;
-        currentUser.position = me.position;
-        currentUser.department = me.department;
-        currentUser.role = me.role;
-        currentUser.onlyOwnDepartment = !!me.onlyOwnDepartment;
-        currentUser.extraPermissions = me.extraPermissions || [];
-        setSession(currentUser, authToken);
-        renderAuthUI();
-      }
+  const me = (await apiRequest('/users')).find(x => x.id === id);
+  if (me) {
+    currentUser.fullName = me.fullName || me.full_name;
+    currentUser.position = me.position;
+    currentUser.department = me.department;
+    currentUser.role = me.role;
+    currentUser.onlyOwnDepartment = !!me.onlyOwnDepartment;
+    currentUser.extraPermissions = me.extraPermissions || [];
+
+    // Сохраняем оригинальные данные impersonate, если они есть
+    const origUser  = getOriginalUser();
+    const origToken = getOriginalToken();
+    if (origUser && origToken) {
+      setSession(currentUser, authToken, origUser, origToken);
+    } else {
+      setSession(currentUser, authToken);
     }
+    renderAuthUI();
+  }
+}
 
     closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
