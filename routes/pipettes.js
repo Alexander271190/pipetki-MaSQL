@@ -162,6 +162,169 @@ router.delete('/:id', authenticate, requirePermission('manage_pipettes'), async 
     conn.release();
   }
 });
+// ============================================================
+// МАССОВАЯ ОТПРАВКА НА ПОВЕРКУ
+// ============================================================
+router.post('/bulk-send', authenticate, requirePermission('manage_pipettes'), async (req, res) => {
+  const { ids, sentDate, note } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Не выбрано ни одной пипетки' });
+  }
+  if (!sentDate) {
+    return res.status(400).json({ error: 'Дата отправки обязательна' });
+  }
+  if (ids.length > 100) {
+    return res.status(400).json({ error: 'Слишком много пипеток за раз (максимум 100)' });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const successful = [];
+    const skipped = [];
+    const notFound = [];
+
+    for (const id of ids) {
+      const [rows] = await conn.query(
+        'SELECT id, model, sent_for_calibration FROM pipettes WHERE id = ?',
+        [id]
+      );
+
+      if (!rows.length) {
+        notFound.push(id);
+        continue;
+      }
+
+      if (rows[0].sent_for_calibration) {
+        skipped.push(id);
+        continue;
+      }
+
+      await conn.query(
+        `UPDATE pipettes
+         SET sent_for_calibration = ?, sent_note = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [sentDate, note || null, id]
+      );
+
+      successful.push(id);
+    }
+
+    if (successful.length > 0) {
+      await conn.query(
+        'INSERT INTO audit_log (user_id, user_full_name, action, details) VALUES (?, ?, ?, ?)',
+        [
+          req.user.id,
+          req.user.full_name,
+          'Отправка на поверку',
+          `${successful.length} шт. (${successful.join(', ')}) — ${sentDate}`
+        ]
+      );
+    }
+
+    await conn.commit();
+
+    res.status(201).json({
+      message: `Отправлено на поверку: ${successful.length}`,
+      successful: successful.length,
+      skipped: skipped.length,
+      skippedIds: skipped,
+      notFound: notFound.length,
+      notFoundIds: notFound
+    });
+  } catch (e) {
+    await conn.rollback();
+    console.error('Bulk send error:', e);
+    res.status(500).json({ error: 'Ошибка отправки на поверку', details: e.message });
+  } finally {
+    conn.release();
+  }
+});
+// ============================================================
+// МАССОВЫЙ ВОЗВРАТ С ПОВЕРКИ
+// ============================================================
+router.post('/bulk-return', authenticate, requirePermission('manage_pipettes'), async (req, res) => {
+  const { items, date, org, note } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Не выбрано ни одной пипетки' });
+  }
+  if (!date) {
+    return res.status(400).json({ error: 'Дата поверки обязательна' });
+  }
+  if (items.length > 100) {
+    return res.status(400).json({ error: 'Слишком много пипеток за раз (максимум 100)' });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const successful = [];
+    const skipped = [];
+
+    for (const item of items) {
+      if (!item.id) { skipped.push('?'); continue; }
+
+      const [rows] = await conn.query(
+        'SELECT id FROM pipettes WHERE id = ?',
+        [item.id]
+      );
+      if (!rows.length) { skipped.push(item.id); continue; }
+
+      const itemResult = item.result || 'pass';
+      const itemCert = item.cert || null;
+
+      await conn.query(
+        `INSERT INTO calibration_history (pipette_id, \`date\`, cert, result, org, note)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [item.id, date, itemCert, itemResult, org || null, note || null]
+      );
+
+      await conn.query(
+        `UPDATE pipettes
+         SET last_calibration = ?,
+             cert = ?,
+             last_result = ?,
+             sent_for_calibration = NULL,
+             sent_note = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [date, itemCert, itemResult, item.id]
+      );
+
+      successful.push(item.id);
+    }
+
+    if (successful.length > 0) {
+      await conn.query(
+        'INSERT INTO audit_log (user_id, user_full_name, action, details) VALUES (?, ?, ?, ?)',
+        [
+          req.user.id,
+          req.user.full_name,
+          'Возврат с поверки',
+          `${successful.length} шт. (${successful.join(', ')}) — ${date}`
+        ]
+      );
+    }
+
+    await conn.commit();
+    res.status(201).json({
+      message: `Возврат оформлен для ${successful.length} пипеток`,
+      successful: successful.length,
+      skipped: skipped.length,
+      skippedIds: skipped
+    });
+  } catch (e) {
+    await conn.rollback();
+    console.error('Bulk return error:', e);
+    res.status(500).json({ error: 'Ошибка возврата', details: e.message });
+  } finally {
+    conn.release();
+  }
+});
 
 // Добавление поверки
 router.post('/:id/calibration', authenticate, requirePermission('manage_pipettes'), async (req, res) => {
