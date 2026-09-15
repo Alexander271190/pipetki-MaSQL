@@ -1352,12 +1352,14 @@ function showReminder(dangerList, warnList) {
   if (dangerList.length > 0) {
     html += `<div class="reminder-section"><div class="reminder-section-title danger">🚨 Просрочены (${dangerList.length})</div><ul class="reminder-list">`;
     dangerList.sort((a, b) => daysLeft(a) - daysLeft(b)).forEach(p => {
-     const dl = daysLeft(p);
-const isFail = calcStatus(p) === 'fail';
-html += `<li class="danger">...
-  <div class="pip-days">${isFail ? 'брак' : 'просрочка ' + Math.abs(dl) + ' дн.'}</div>
-</li>`;
-    });
+  const dl = daysLeft(p);
+  const isFail = calcStatus(p) === 'fail';
+  html += `<li class="danger">
+    <div class="pip-info"><div class="pip-id">${esc(p.id)} — ${esc(p.model)}</div>
+    <div class="pip-detail">${esc(p.department || 'без отдела')} · ${esc(p.responsible || '—')}</div></div>
+    <div class="pip-days">${isFail ? 'брак' : 'просрочка ' + Math.abs(dl) + ' дн.'}</div>
+  </li>`;
+});
     html += '</ul></div>';
   }
   if (warnList.length > 0) {
