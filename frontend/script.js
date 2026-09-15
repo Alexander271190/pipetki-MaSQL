@@ -266,6 +266,7 @@ async function loadFilterConfig() {
             { value: 'danger', label: 'Просрочены' },
             { value: 'inactive', label: 'Неактивны' },
             { value: 'sent', label: '📦 На поверке' }
+            { value: 'fail', label: '❌ Брак' },
           ];
         } else if (f.optionsSource === 'active_list') {
           f.options = [
@@ -1273,6 +1274,7 @@ function exportToPDF() {
       .status-ok       { color: #16a34a; font-weight: 600; }
       .status-warn     { color: #ca8a04; font-weight: 600; }
       .status-danger   { color: #dc2626; font-weight: 700; }
+      .status-fail     { color: #991b1b; font-weight: 700; }
       .status-inactive { color: #94a3b8; }
       .status-sent     { color: #0ea5e9; font-weight: 600; }
       .footer { margin-top: 15px; font-size: 8pt; color: #000; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 8px; }
@@ -1322,7 +1324,7 @@ function checkReminder() {
   const today = todayStr();
   if (lastShown === today) return;
 
-  const dangerList = pipettes.filter(p => calcStatus(p) === 'danger');
+  const dangerList = pipettes.filter(p => ['danger', 'fail'].includes(calcStatus(p)));
   const warnList = pipettes.filter(p => calcStatus(p) === 'warn');
   if (dangerList.length === 0 && warnList.length === 0) return;
 
@@ -1351,12 +1353,11 @@ function showReminder(dangerList, warnList) {
   if (dangerList.length > 0) {
     html += `<div class="reminder-section"><div class="reminder-section-title danger">🚨 Просрочены (${dangerList.length})</div><ul class="reminder-list">`;
     dangerList.sort((a, b) => daysLeft(a) - daysLeft(b)).forEach(p => {
-      const dl = daysLeft(p);
-      html += `<li class="danger">
-        <div class="pip-info"><div class="pip-id">${esc(p.id)} — ${esc(p.model)}</div>
-        <div class="pip-detail">${esc(p.department || 'без отдела')} · ${esc(p.responsible || '—')}</div></div>
-        <div class="pip-days">просрочка ${Math.abs(dl)} дн.</div>
-      </li>`;
+     const dl = daysLeft(p);
+const isFail = calcStatus(p) === 'fail';
+html += `<li class="danger">...
+  <div class="pip-days">${isFail ? 'брак' : 'просрочка ' + Math.abs(dl) + ' дн.'}</div>
+</li>`;
     });
     html += '</ul></div>';
   }
