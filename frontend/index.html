@@ -371,20 +371,21 @@
   </div>
 </div>
 
-  <!-- Модалка импорта -->
+   <!-- Модалка импорта -->
 <div class="modal-overlay" id="import-modal">
   <div class="modal">
     <h2>📥 Импорт данных</h2>
     <div class="form-group">
-      <label>Формат файла</label>
-      <select id="import-format">
-        <option value="json">JSON (полный дамп)</option>
-        <option value="csv">CSV (таблица)</option>
-      </select>
+      <label>Файл (.xlsx, .xls, .csv, .json)</label>
+      <input type="file" id="import-file" accept=".json,.csv,.xlsx,.xls,.txt">
     </div>
-    <div class="form-group">
-      <label>Файл</label>
-      <input type="file" id="import-file" accept=".json,.csv">
+    <div style="margin-bottom:15px;padding:10px 12px;background:#f0f9ff;border-left:3px solid #0ea5e9;border-radius:8px;font-size:.82rem;color:#0c4a6e;">
+      ℹ️ Файл Excel можно загружать <strong>как есть</strong> — заголовки распознаются автоматически
+      («ID», «Внутренний номер», «Модель», «Наименование», «Серийный номер», «Отдел»,
+      «Дата поверки», «МПИ», «Ответственный», «Место», «Примечание» и др.).
+    </div>
+    <div id="import-progress" style="display:none;margin-bottom:15px;padding:10px;background:#f1f5f9;border-radius:8px;font-size:.85rem;color:#475569;">
+      ⏳ Загрузка…
     </div>
     <div class="form-actions">
       <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Отмена</button>
@@ -392,7 +393,6 @@
     </div>
   </div>
 </div>
-
 <!-- МОДАЛКА НАСТРОЕК -->
 <div class="modal-overlay" id="settings-modal">
   <div class="modal modal-lg">
