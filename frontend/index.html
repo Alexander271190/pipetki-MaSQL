@@ -82,6 +82,18 @@
   </div>
 
   <button class="btn btn-primary btn-add-pipette" onclick="openModal()">➕ Добавить пипетку</button>
+  <button class="btn btn-info btn-bulk-cal" 
+        id="btn-bulk-cal" 
+        style="display:none;" 
+        onclick="openBulkSendModal()">
+  📦 Отправить на поверку (<span id="bulk-counter">0</span>)
+</button>
+<button class="btn btn-success btn-bulk-return" 
+        id="btn-bulk-return" 
+        style="display:none;" 
+        onclick="openBulkReturnModal()">
+  📥 Вернулись с поверки (<span id="bulk-return-counter">0</span>)
+</button>  
   <button class="btn btn-warning btn-import" onclick="openImportModal()">📥 Импорт</button>
   <button class="btn btn-warning btn-settings" onclick="openSettingsModal()">⚙️ Настройки</button>
 
@@ -97,18 +109,23 @@
     <div class="table-wrapper">
       <table id="pipettes-table">
         <thead>
-          <tr>
-            <th onclick="sortBy('id')">ID <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('model')">Модель <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('volume')">Объём <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('department')">Отдел <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('lastCalibration')">Поверка <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('nextCalibration')">Следующая <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('responsible')">Ответственный <span class="sort-arrow"></span></th>
-            <th>Статус</th>
-            <th id="actions-header">Действия</th>
-          </tr>
-        </thead>
+  <tr>
+    <th class="col-checkbox">
+      <input type="checkbox" id="select-all-checkbox" 
+             onclick="toggleSelectAll(this.checked)" 
+             title="Выбрать все">
+    </th>
+    <th onclick="sortBy('id')">ID <span class="sort-arrow"></span></th>
+    <th onclick="sortBy('model')">Модель <span class="sort-arrow"></span></th>
+    <th onclick="sortBy('volume')">Объём <span class="sort-arrow"></span></th>
+    <th onclick="sortBy('department')">Отдел <span class="sort-arrow"></span></th>
+    <th onclick="sortBy('lastCalibration')">Поверка <span class="sort-arrow"></span></th>
+    <th onclick="sortBy('nextCalibration')">Следующая <span class="sort-arrow"></span></th>
+    <th onclick="sortBy('responsible')">Ответственный <span class="sort-arrow"></span></th>
+    <th>Статус</th>
+    <th id="actions-header">Действия</th>
+  </tr>
+</thead>
         <tbody id="pipettes-body"></tbody>
       </table>
     </div>
@@ -176,6 +193,56 @@
     </form>
   </div>
 </div>
+  
+ <!-- МОДАЛКА МАССОВОЙ ОТПРАВКИ -->
+<div class="modal-overlay" id="bulk-send-modal">
+  <div class="modal modal-lg">
+    <h2>📦 Отправить на поверку</h2>
+
+    <div id="bulk-send-info" 
+         style="margin-bottom:15px;padding:12px;background:#f0f9ff;border-left:3px solid #0ea5e9;border-radius:8px;font-size:.9rem;">
+      <strong>Выбрано пипеток:</strong> <span id="bulk-send-count">0</span>
+    </div>
+
+    <div style="margin-bottom:15px;">
+      <div style="font-weight:600;color:#475569;margin-bottom:8px;font-size:.85rem;">
+        Выбранные пипетки:
+      </div>
+      <div id="bulk-send-list" 
+           style="max-height:150px;overflow-y:auto;padding:8px;background:#f8fafc;border-radius:8px;font-size:.85rem;line-height:1.6;">
+      </div>
+    </div>
+
+    <div style="margin-bottom:15px;padding:10px 12px;background:#fef9c3;border-left:3px solid #eab308;border-radius:8px;font-size:.82rem;color:#854d0e;">
+      ℹ️ Пипетки будут отмечены как «На поверке». Когда вернутся — внесите результат через кнопку <strong>📥</strong>.
+    </div>
+
+    <form id="bulk-send-form" onsubmit="saveBulkSend(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Дата отправки *</label>
+          <input type="date" id="bulk-send-date" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Примечание</label>
+        <textarea id="bulk-send-note" rows="2" 
+                  placeholder="например: отправлено курьером, накладная №123"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeBulkSendModal()">
+          Отмена
+        </button>
+        <button type="button" class="btn btn-info" onclick="printSendAct()">
+          🖨️ Распечатать акт
+        </button>
+        <button type="submit" class="btn btn-warning">
+          📦 Отправить на поверку
+        </button>
+      </div>
+    </form>
+  </div>
+</div> 
 
 <div class="modal-overlay" id="history-modal">
   <div class="modal modal-lg">
