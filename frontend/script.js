@@ -1475,69 +1475,45 @@ function closeImportModal() {
 
 async function handleImport() {
   if (!canImport()) { showToast('Нет прав на импорт', 'error'); return; }
-  const format = document.getElementById('import-format').value;
+
   const fileInput = document.getElementById('import-file');
   const file = fileInput.files[0];
   if (!file) { showToast('Выберите файл', 'error'); return; }
 
+  const progress = document.getElementById('import-progress');
+  if (progress) {
+    progress.style.display = 'block';
+    progress.textContent = '⏳ Загрузка и обработка файла…';
+  }
+
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      let imported = [];
-      if (format === 'json') {
-        imported = JSON.parse(e.target.result);
-        if (!Array.isArray(imported)) throw new Error('JSON должен быть массивом');
-      } else {
-        const text = e.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) throw new Error('Пустой файл');
-        const sep = lines[0].includes(';') ? ';' : ',';
-        const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
-        imported = lines.slice(1).map(line => {
-          const vals = line.split(sep).map(v => v.trim().replace(/^"|"$/g, ''));
-          const obj = {};
-          headers.forEach((h, i) => obj[h] = vals[i] || '');
-          return obj;
-        });
+      const dataUrl = e.target.result;
+      const base64 = dataUrl.split(',')[1] || dataUrl;
+      const res = await apiRequest('/import', 'POST', { file: base64, filename: file.name });
+
+      let msg = `Импортировано: ${res.added}`;
+      if (res.skipped > 0) msg += `, пропущено: ${res.skipped}`;
+      if (res.errors > 0) msg += `, ошибок: ${res.errors}`;
+      showToast(msg, res.added > 0 ? 'success' : 'error');
+
+      if (res.skippedDetails && res.skippedDetails.length > 0) {
+        console.log('⚠️ Пропущено:', res.skippedDetails);
+      }
+      if (res.errorDetails && res.errorDetails.length > 0) {
+        console.log('❌ Ошибки:', res.errorDetails);
       }
 
-      let added = 0;
-      for (const item of imported) {
-        const id = item.id || item.ID || '';
-        const model = item.model || item['Модель'] || '';
-        if (!id || !model) continue;
-        try {
-          await apiRequest('/pipettes', 'POST', {
-            id: String(id).trim(),
-            model: String(model).trim(),
-            serial: item.serial || item['Серийный'] || '',
-            manufacturer: item.manufacturer || item['Производитель'] || '',
-            volume: String(item.volume || item['Объём'] || '').replace(' мкл', ''),
-            department: item.department || item['Отдел'] || '',
-            interval: parseInt(item.interval || item['МПИ'] || 12) || 12,
-            lastCalibration: item.lastCalibration || item.last_calibration || item['Дата поверки'] || '',
-            cert: item.cert || item['Свидетельство'] || '',
-            result: item.result || item.lastResult || 'pass',
-            active: item.active !== false && item.active !== 0 && item.active !== 'false',
-            responsible: item.responsible || item['Ответственный'] || '',
-            location: item.location || item['Место'] || '',
-            notes: item.notes || item['Примечание'] || ''
-          });
-          added++;
-        } catch (err) {
-          console.warn('Пропущено:', id, err.message);
-        }
-      }
-      await loadPipetteData();
       closeImportModal();
-      showToast(`Импортировано записей: ${added}`, 'success');
+      await loadPipetteData();
     } catch (err) {
+      if (progress) progress.textContent = '❌ ' + (err.message || 'Ошибка импорта');
       showToast('Ошибка импорта: ' + err.message, 'error');
     }
   };
-  reader.readAsText(file, 'UTF-8');
+  reader.readAsDataURL(file);
 }
-
 // ============================================================
 // НАСТРОЙКИ
 // ============================================================
