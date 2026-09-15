@@ -170,42 +170,6 @@ router.put('/system', authenticate, requireRole(['admin']), async (req, res) => 
 });
 
 // ============================================================
-// ПОДРАЗДЕЛЕНИЯ
-// ============================================================
-router.get('/subdivisions', authenticate, async (req, res) => {
-  const [rows] = await db.query('SELECT name FROM subdivisions WHERE enabled = 1 ORDER BY name');
-  res.json(rows.map(r => r.name));
-});
-
-router.get('/subdivisions/all', authenticate, requireRole(['admin']), async (req, res) => {
-  const [rows] = await db.query('SELECT name, enabled FROM subdivisions ORDER BY name');
-  res.json(rows.map(r => ({ name: r.name, enabled: !!r.enabled })));
-});
-
-router.put('/subdivisions', authenticate, requireRole(['admin']), async (req, res) => {
-  const subdivisions = req.body;
-  if (!Array.isArray(subdivisions)) return res.status(400).json({ error: 'Ожидается массив' });
-  const conn = await db.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.query('DELETE FROM subdivisions');
-    for (const s of subdivisions) {
-      await conn.query(
-        'INSERT INTO subdivisions (name, enabled) VALUES (?, ?)',
-        [s.name || s, s.enabled !== false ? 1 : 0]
-      );
-    }
-    await conn.commit();
-    res.json({ message: 'Подразделения обновлены' });
-  } catch (e) {
-    await conn.rollback();
-    res.status(500).json({ error: 'Ошибка обновления подразделений' });
-  } finally {
-    conn.release();
-  }
-});
-
-// ============================================================
 // ФИЛЬТРЫ
 // ============================================================
 router.get('/filters', authenticate, async (req, res) => {
