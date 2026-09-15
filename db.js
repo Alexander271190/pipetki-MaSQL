@@ -60,7 +60,6 @@ async function initSchema() {
         model VARCHAR(255) NOT NULL,
         volume VARCHAR(50),
         department VARCHAR(255),
-        subdivision VARCHAR(255),
         \`interval\` INT DEFAULT 12,
         last_calibration VARCHAR(20),
         cert VARCHAR(255),
@@ -103,13 +102,7 @@ async function initSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-      CREATE TABLE IF NOT EXISTS subdivisions (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL,
-        enabled TINYINT DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+      
       CREATE TABLE IF NOT EXISTS filter_config (
         id VARCHAR(100) PRIMARY KEY,
         label VARCHAR(255) NOT NULL,
@@ -186,19 +179,6 @@ async function seedInitialData() {
     }
   }
 
-  // --- Подразделения ---
-  const [sc] = await pool.query('SELECT COUNT(*) AS c FROM subdivisions');
-  if (sc[0].c === 0) {
-    const subs = [
-      'Клинико-диагностическая лаборатория',
-      'ГИМИ',
-      'Микробиологическая лаборатория'
-    ];
-    for (const s of subs) {
-      await pool.query('INSERT INTO subdivisions (name, enabled) VALUES (?, 1)', [s]);
-    }
-  }
-
   // --- Системные настройки ---
   const [ssc] = await pool.query('SELECT COUNT(*) AS c FROM system_settings');
   if (ssc[0].c === 0) {
@@ -217,7 +197,6 @@ async function seedInitialData() {
       ['model',           'Модель',                        'text',     1, 1, '[]',                    '',     4],
       ['volume',          'Объём (мкл)',                   'text',     0, 1, '[]',                    '',     5],
       ['department',      'Отдел',                         'select',   0, 1, '[]',                    '',     6],
-      ['subdivision',     'Подразделение',                 'select',   0, 1, '[]',                    '',     7],
       ['interval',        'Межповерочный интервал (мес.)', 'number',   1, 1, '[]',                    '12',   8],
       ['lastCalibration', 'Дата последней поверки',        'date',     1, 1, '[]',                    '',     9],
       ['cert',            'Номер свидетельства',           'text',     0, 1, '[]',                    '',     10],
@@ -252,7 +231,7 @@ async function seedInitialData() {
     };
 
     const insPip = `INSERT INTO pipettes
-      (id, serial, manufacturer, model, volume, department, subdivision, \`interval\`,
+      (id, serial, manufacturer, model, volume, department \`interval\`,
        last_calibration, cert, last_result, active, responsible, location, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
@@ -293,7 +272,6 @@ async function seedInitialData() {
       VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
     await pool.query(insF, ['status',       'Статус',         'select',      'status',           1, 'status_list', 1]);
-    await pool.query(insF, ['subdivision',  'Подразделение',  'select',      'subdivision',      1, 'subdivisions', 2]);
     await pool.query(insF, ['department',   'Отдел',          'select',      'department',       1, 'departments', 3]);
     await pool.query(insF, ['responsible',  'Ответственный',  'text',        'responsible',      1, '',            4]);
     await pool.query(insF, ['model',        'Модель',         'text',        'model',            1, '',            5]);
