@@ -290,6 +290,7 @@ async function loadFilterConfig() {
 function calcStatus(p) {
   if (!p.active) return 'inactive';
   if (p.sent_for_calibration) return 'sent';
+  if (p.last_result === 'fail') return 'fail';
   if (!p.last_calibration || !p.interval) return 'danger';
   const last = new Date(p.last_calibration);
   const next = new Date(last);
@@ -343,7 +344,7 @@ function render() {
     const s = calcStatus(p);
     if (s === 'ok') ok++;
     else if (s === 'warn') warn++;
-    else if (s === 'danger') danger++;
+    else if (s === 'danger' || s === 'fail') danger++;
     else if (s === 'sent') sent++;
   });
   document.getElementById('stat-ok').textContent = ok;
@@ -380,17 +381,18 @@ function render() {
 
   const canManage = canManagePipettes();
   const labels = {
-    ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена',
-    inactive: 'Неактивна', sent: '📦 На поверке'
-  };
+  ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена',
+  inactive: 'Неактивна', sent: '📦 На поверке', fail: '❌ Брак'
+};
 
   tbody.innerHTML = filtered.map(p => {
     const status = calcStatus(p);
     const next = getNextDate(p);
     const dl = daysLeft(p);
     const daysText = status === 'inactive' || status === 'sent' ? '' :
-      status === 'danger' ? ` (просрочка ${Math.abs(dl)} дн.)` :
-      ` (${dl} дн.)`;
+  status === 'fail' ? ' (брак)' :
+  status === 'danger' ? ` (просрочка ${Math.abs(dl)} дн.)` :
+  ` (${dl} дн.)`;
     const histCount = (p.history || []).length;
     const isChecked = selectedPipettes.has(p.id) ? 'checked' : '';
 
@@ -432,7 +434,7 @@ function render() {
         status === 'sent'
           ? `<small style="color:#0ea5e9;font-weight:600;">📦 Отправлена ${formatDate(p.sent_for_calibration)}</small>
              ${p.sent_note ? `<br><small style="color:#64748b;font-style:italic;">${esc(p.sent_note)}</small>` : ''}`
-          : `${formatDate(next)}${daysText ? `<br><small style="color:${status === 'danger' ? '#dc2626' : status === 'warn' ? '#eab308' : '#16a34a'}">${daysText}</small>` : ''}`
+          : `${formatDate(next)}${daysText ? `<br><small style="color:${status === 'danger' || status === 'fail' ? '#dc2626' : status === 'warn' ? '#eab308' : '#16a34a'}">${daysText}</small>` : ''}`
       }</td>
       <td>${esc(p.responsible || '—')}${p.location ? `<br><small style="color:#94a3b8">${esc(p.location)}</small>` : ''}</td>
       <td><span class="status-badge status-${status}"><span class="status-dot"></span>${labels[status]}</span></td>
@@ -886,7 +888,7 @@ async function openModal(id) {
   } else {
     title.textContent = '➕ Добавить оборудование';
     const defaultData = {
-      lastCalibration: new Date().toISOString().slice(0, 10),
+      lastCalibration: todayStr(),
       interval: 12,
       result: 'pass',
       active: 'true'
@@ -974,7 +976,7 @@ function openQuickCalModal(id) {
   if (!p) { showToast('Оборудование не найдено', 'error'); return; }
   document.getElementById('quick-cal-id').value = id;
   document.getElementById('quick-cal-pipette-info').innerHTML = `<strong>${esc(p.id)}</strong> — ${esc(p.model)} (${esc(p.department || 'без отдела')})`;
-  document.getElementById('quick-cal-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('quick-cal-date').value = todayStr();
   document.getElementById('quick-cal-cert').value = '';
   document.getElementById('quick-cal-result').value = 'pass';
   document.getElementById('quick-cal-org').value = '';
@@ -996,7 +998,7 @@ async function saveQuickCalibration() {
   const note = document.getElementById('quick-cal-note').value.trim();
 
   if (!date) { showToast('Укажите дату поверки', 'error'); return; }
-  if (date > new Date().toISOString().slice(0, 10)) { showToast('Дата не может быть в будущем', 'error'); return; }
+  if (date > todayStr()) { showToast('Дата не может быть в будущем', 'error'); return; }
 
   try {
     await apiRequest(`/pipettes/${id}/calibration`, 'POST', { date, cert, result, org, note });
@@ -1053,9 +1055,9 @@ async function renderHistoryContent(p) {
   const next = getNextDate(p);
   const status = calcStatus(p);
   const statusLabels = {
-    ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена',
-    inactive: 'Неактивна', sent: '📦 На поверке'
-  };
+  ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена',
+  inactive: 'Неактивна', sent: '📦 На поверке', fail: '❌ Брак'
+};
 
   let history = [];
   try {
@@ -1108,7 +1110,7 @@ async function renderHistoryContent(p) {
 function openCalibrationForm() {
   if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
   document.getElementById('calibration-form-wrap').style.display = 'block';
-  document.getElementById('cal-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('cal-date').value = todayStr();
   document.getElementById('cal-cert').value = '';
   document.getElementById('cal-result').value = 'pass';
   document.getElementById('cal-org').value = '';
@@ -1128,7 +1130,7 @@ async function addCalibrationRecord() {
   const note = document.getElementById('cal-note').value.trim();
 
   if (!date) { showToast('Укажите дату поверки', 'error'); return; }
-  if (date > new Date().toISOString().slice(0, 10)) { showToast('Дата не может быть в будущем', 'error'); return; }
+  if (date > todayStr()) { showToast('Дата не может быть в будущем', 'error'); return; }
 
   try {
     await apiRequest(`/pipettes/${currentHistoryId}/calibration`, 'POST', { date, cert, result, org, note });
@@ -1202,7 +1204,7 @@ async function exportToExcel() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `pipettes_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `pipettes_${todayStr()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   showToast(`Экспорт: ${fields.length} полей, ${data.length} записей`, 'success');
@@ -1313,7 +1315,7 @@ document.addEventListener('click', (e) => {
 // ============================================================
 function checkReminder() {
   const lastShown = localStorage.getItem('pipette_last_reminder');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   if (lastShown === today) return;
 
   const dangerList = pipettes.filter(p => calcStatus(p) === 'danger');
@@ -1373,7 +1375,7 @@ function showReminder(dangerList, warnList) {
 function closeReminder(confirmed) {
   document.getElementById('reminder-overlay').classList.remove('active');
   if (confirmed) {
-    localStorage.setItem('pipette_last_reminder', new Date().toISOString().slice(0, 10));
+    localStorage.setItem('pipette_last_reminder', todayStr());
   }
 }
 
@@ -2387,7 +2389,7 @@ function openBulkSendModal() {
   }).join('');
   document.getElementById('bulk-send-list').innerHTML = listHtml;
 
-  document.getElementById('bulk-send-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('bulk-send-date').value = todayStr();
   document.getElementById('bulk-send-note').value = '';
 
   document.getElementById('bulk-send-modal').classList.add('active');
@@ -2417,7 +2419,7 @@ async function saveBulkSend(e) {
   const note = document.getElementById('bulk-send-note').value.trim();
 
   if (!sentDate) { showToast('Укажите дату отправки', 'error'); return; }
-  if (sentDate > new Date().toISOString().slice(0, 10)) {
+  if (sentDate > todayStr()) {
     showToast('Дата не может быть в будущем', 'error');
     return;
   }
@@ -2462,7 +2464,7 @@ function printSendAct() {
   }
 
   const sentDate = document.getElementById('bulk-send-date').value
-    || new Date().toISOString().slice(0, 10);
+    || todayStr();
   const note = (document.getElementById('bulk-send-note').value || '').trim();
   const today = new Date().toLocaleDateString('ru-RU');
   const user = currentUser ? currentUser.fullName : '';
@@ -2624,7 +2626,7 @@ function openBulkReturnModal() {
     </table>
   `;
 
-  document.getElementById('bulk-return-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('bulk-return-date').value = todayStr();
   document.getElementById('bulk-return-org').value = '';
   document.getElementById('bulk-return-result').value = 'pass';
   document.getElementById('bulk-return-note').value = '';
@@ -2667,7 +2669,7 @@ async function saveBulkReturn(e) {
   const commonCert = document.getElementById('bulk-return-cert').value.trim();
 
   if (!date) { showToast('Укажите дату поверки', 'error'); return; }
-  if (date > new Date().toISOString().slice(0, 10)) {
+  if (date > todayStr()) {
     showToast('Дата не может быть в будущем', 'error');
     return;
   }
