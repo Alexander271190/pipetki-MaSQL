@@ -50,7 +50,7 @@ router.get('/:id', authenticate, async (req, res) => {
 // Создание
 router.post('/', authenticate, requirePermission('manage_pipettes'), async (req, res) => {
   const {
-    id, serial, manufacturer, model, volume, department, subdivision, interval,
+    id, serial, manufacturer, model, volume, department, interval,
     lastCalibration, cert, result, active, responsible, location, notes
   } = req.body;
 
@@ -65,10 +65,10 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
 
     await conn.query(
       `INSERT INTO pipettes
-        (id, serial, manufacturer, model, volume, department, subdivision, \`interval\`,
+        (id, serial, manufacturer, model, volume, department, \`interval\`,
          last_calibration, cert, last_result, active, responsible, location, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, serial, manufacturer, model, volume, department, subdivision || null, interval || 12,
+      [id, serial, manufacturer, model, volume, department, interval || 12,
        lastCalibration, cert, result || 'pass', active !== false ? 1 : 0,
        responsible, location, notes]
     );
@@ -102,7 +102,7 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
   const updates = req.body;
   const map = {
     serial: 'serial', manufacturer: 'manufacturer', model: 'model', volume: 'volume',
-    department: 'department', subdivision: 'subdivision',
+    department: 'department', 
     interval: '`interval`', lastCalibration: 'last_calibration',
     cert: 'cert', lastResult: 'last_result', active: 'active',
     responsible: 'responsible', location: 'location', notes: 'notes',
