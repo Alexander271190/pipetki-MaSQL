@@ -4,7 +4,6 @@
 const API_URL = '/api';
 let authToken = null;
 let currentUser = null;
-let _cachedSubdivisions = [];
 let _cachedDepartmentsFull = [];
 let _cachedFilters = [];
 let _activeFilters = [];
@@ -212,7 +211,6 @@ let sortField = 'nextCalibration';
 let sortDir = 1;
 let currentHistoryId = null;
 let departmentsList = [];
-let subdivisionsList = [];
 
 async function loadPipetteData() {
   if (!isAuthenticated()) return;
@@ -229,7 +227,6 @@ async function loadPipetteData() {
     }
 
     await loadDepartments();
-    await loadSubdivisions();
     await loadFilterConfig();
 
     render();
@@ -249,15 +246,6 @@ async function loadDepartments() {
   }
 }
 
-async function loadSubdivisions() {
-  try {
-    subdivisionsList = await apiRequest('/settings/subdivisions');
-  } catch (error) {
-    console.error('Error loading subdivisions:', error);
-    subdivisionsList = [];
-  }
-}
-
 async function loadFilterConfig() {
   try {
     const raw = await apiRequest('/settings/filters');
@@ -266,8 +254,7 @@ async function loadFilterConfig() {
       if (f.type === 'select') {
         if (f.optionsSource === 'departments') {
           f.options = departmentsList.map(d => ({ value: d, label: d }));
-        } else if (f.optionsSource === 'subdivisions') {
-          f.options = subdivisionsList.map(s => ({ value: s, label: s }));
+        
         } else if (f.optionsSource === 'status_list') {
           f.options = [
             { value: 'ok', label: 'В норме' },
@@ -703,7 +690,7 @@ function getFilteredPipettes() {
   const userDept = currentUser && currentUser.onlyOwnDepartment ? currentUser.department : null;
 
   return pipettes.filter(p => {
-    const s = `${p.id} ${p.serial || ''} ${p.model} ${p.manufacturer || ''} ${p.department || ''} ${p.subdivision || ''} ${p.responsible || ''}`.toLowerCase();
+    const s = `${p.id} ${p.serial || ''} ${p.model} ${p.manufacturer || ''}  ${p.responsible || ''}`.toLowerCase();
     if (search && !s.includes(search)) return false;
     if (userDept && p.department !== userDept) return false;
 
@@ -789,11 +776,6 @@ async function generateFormFields(data = null) {
       return;
     }
 
-    let departmentsList = [];
-    let subdivisionsList = [];
-    try { departmentsList = await apiRequest('/settings/departments'); } catch (e) {}
-    try { subdivisionsList = await apiRequest('/settings/subdivisions'); } catch (e) {}
-
     for (const f of fields) {
       const div = document.createElement('div');
       div.className = 'form-group';
@@ -823,8 +805,7 @@ async function generateFormFields(data = null) {
 
         if (f.id === 'department') {
           opts = departmentsList.length ? departmentsList : (f.options || []);
-        } else if (f.id === 'subdivision') {
-          opts = subdivisionsList.length ? subdivisionsList : (f.options || []);
+
         } else if (f.id === 'result') {
           opts = [
             { value: 'pass', label: '✅ Годен' },
@@ -1569,7 +1550,6 @@ async function switchSettingsTab(tab) {
   c.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px;">Загрузка…</p>';
 
   if (tab === 'fields') await renderFieldsSettings();
-  else if (tab === 'subdivisions') await renderSubdivisionsSettings();
   else if (tab === 'departments') await renderDepartmentsSettings();
   else if (tab === 'filters') await renderFiltersSettings();
   else if (tab === 'export') await renderExportSettings();
@@ -1811,112 +1791,6 @@ async function saveDepartmentsFull() {
 }
 
 // ============================================================
-// ВКЛАДКА: ПОДРАЗДЕЛЕНИЯ
-// ============================================================
-async function renderSubdivisionsSettings(skipFetch = false) {
-  const c = document.getElementById('settings-content');
-  try {
-    if (!skipFetch) {
-      _cachedSubdivisions = await apiRequest('/settings/subdivisions/all');
-    }
-
-    let html = `
-      <h3>Управление подразделениями</h3>
-      <p style="color:#64748b;margin-bottom:12px;">
-        Отключённые подразделения не показываются в формах и фильтрах.
-      </p>
-      <table class="field-settings-table">
-        <thead><tr>
-          <th style="width:60px;">Активно</th>
-          <th>Название</th>
-          <th style="width:100px;">Действия</th>
-        </tr></thead><tbody>`;
-
-    _cachedSubdivisions.forEach((s, i) => {
-      html += `<tr>
-        <td style="text-align:center;">
-          <input type="checkbox" ${s.enabled ? 'checked' : ''}
-                 onchange="_cachedSubdivisions[${i}].enabled=this.checked">
-        </td>
-        <td><input type="text" value="${esc(s.name)}"
-                   onchange="_cachedSubdivisions[${i}].name=this.value"></td>
-        <td><button class="btn btn-danger btn-sm btn-icon-only"
-                    onclick="deleteSubdivision(${i})" title="Удалить">
-          <i class="fa-solid fa-trash"></i>
-        </button></td>
-      </tr>`;
-    });
-    html += `</tbody></table>
-      <div style="margin-top:16px;display:flex;gap:10px;">
-        <input type="text" id="new-subdivision-name"
-               placeholder="Название нового подразделения"
-               style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;"
-               onkeydown="if(event.key==='Enter'){event.preventDefault();addSubdivision();}">
-        <button type="button" class="btn btn-success" onclick="addSubdivision()">
-          <i class="fa-solid fa-plus"></i> Добавить
-        </button>
-        <button type="button" class="btn btn-primary" onclick="saveSubdivisions()">
-          <i class="fa-solid fa-floppy-disk"></i> Сохранить
-        </button>
-      </div>`;
-    c.innerHTML = html;
-  } catch (e) {
-    c.innerHTML = '<p style="color:#dc2626;">Ошибка: ' + e.message + '</p>';
-  }
-}
-
-function addSubdivision() {
-  const input = document.getElementById('new-subdivision-name');
-  const name = (input ? input.value : '').trim();
-  if (!name) { showToast('Введите название', 'error'); return; }
-  if (_cachedSubdivisions.some(s => s.name.toLowerCase() === name.toLowerCase())) {
-    showToast('Такое подразделение уже есть', 'error');
-    return;
-  }
-  _cachedSubdivisions.push({ name, enabled: true });
-  renderSubdivisionsSettings(true);
-  setTimeout(() => {
-    const inp = document.getElementById('new-subdivision-name');
-    if (inp) inp.focus();
-  }, 0);
-  showToast(`Подразделение «${name}» добавлено — не забудьте «Сохранить»`, 'success');
-}
-
-function deleteSubdivision(idx) {
-  if (!confirm(`Удалить «${_cachedSubdivisions[idx].name}»?`)) return;
-  _cachedSubdivisions.splice(idx, 1);
-  renderSubdivisionsSettings(true);
-  showToast('Подразделение удалено — не забудьте «Сохранить»', 'success');
-}
-
-async function saveSubdivisions() {
-  const cleaned = [];
-  const seen = new Set();
-  for (const s of _cachedSubdivisions) {
-    const name = (s.name || '').trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    cleaned.push({ name, enabled: s.enabled !== false });
-  }
-
-  if (cleaned.length === 0) {
-    showToast('Добавьте хотя бы одно подразделение', 'error');
-    return;
-  }
-
-  try {
-    await apiRequest('/settings/subdivisions', 'PUT', cleaned);
-    _cachedSubdivisions = cleaned;
-    showToast('Подразделения сохранены', 'success');
-    await loadSubdivisions();
-    _filterRendered = false;
-    closeSettingsModal();
-  } catch (e) { showToast(e.message, 'error'); }
-}
-
-// ============================================================
 // ВКЛАДКА: ФИЛЬТРЫ
 // ============================================================
 async function renderFiltersSettings(skipFetch = false) {
@@ -1965,7 +1839,6 @@ async function renderFiltersSettings(skipFetch = false) {
         <td>
           <select onchange="_cachedFilters[${i}].optionsSource=this.value">
             <option value="" ${!f.optionsSource ? 'selected' : ''}>—</option>
-            <option value="subdivisions" ${f.optionsSource === 'subdivisions' ? 'selected' : ''}>Подразделения</option>
             <option value="departments" ${f.optionsSource === 'departments' ? 'selected' : ''}>Отделы</option>
             <option value="status_list" ${f.optionsSource === 'status_list' ? 'selected' : ''}>Статусы</option>
             <option value="active_list" ${f.optionsSource === 'active_list' ? 'selected' : ''}>Активность</option>
