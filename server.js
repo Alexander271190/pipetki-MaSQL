@@ -22,6 +22,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/log', require('./routes/log'));
 app.use('/api/backup', require('./routes/backup'));
+app.use('/api/import', require('./routes/import'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
