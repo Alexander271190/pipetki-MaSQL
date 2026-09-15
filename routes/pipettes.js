@@ -33,7 +33,7 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM pipettes WHERE id = ?', [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: 'Пипетка не найдена' });
+    if (!rows.length) return res.status(404).json({ error: 'Оборудование не найдено' });
 
     const [h] = await db.query(
       'SELECT * FROM calibration_history WHERE pipette_id = ? ORDER BY `date` DESC', [req.params.id]);
@@ -67,7 +67,7 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
       `INSERT INTO pipettes
         (id, serial, manufacturer, model, volume, department, \`interval\`,
          last_calibration, cert, last_result, active, responsible, location, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, )`,
       [id, serial, manufacturer, model, volume, department, interval || 12,
        lastCalibration, cert, result || 'pass', active !== false ? 1 : 0,
        responsible, location, notes]
@@ -83,15 +83,15 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
 
     await conn.query(
       'INSERT INTO audit_log (user_id, user_full_name, action, details) VALUES (?, ?, ?, ?)',
-      [req.user.id, req.user.full_name, 'Добавление пипетки', `${id} (${model})`]
+      [req.user.id, req.user.full_name, 'Добавление оборудования', `${id} (${model})`]
     );
 
     await conn.commit();
-    res.status(201).json({ message: 'Пипетка создана', id });
+    res.status(201).json({ message: 'Оборудование создано', id });
   } catch (e) {
     await conn.rollback();
     console.error(e);
-    res.status(500).json({ error: 'Ошибка создания пипетки' });
+    res.status(500).json({ error: 'Ошибка создания оборудования' });
   } finally {
     conn.release();
   }
@@ -129,10 +129,10 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
     await conn.query(`UPDATE pipettes SET ${fields.join(', ')} WHERE id = ?`, values);
     await conn.query(
       'INSERT INTO audit_log (user_id, user_full_name, action, details) VALUES (?, ?, ?, ?)',
-      [req.user.id, req.user.full_name, 'Редактирование пипетки', req.params.id]
+      [req.user.id, req.user.full_name, 'Редактирование оборудования', req.params.id]
     );
     await conn.commit();
-    res.json({ message: 'Пипетка обновлена' });
+    res.json({ message: 'Оборудование обновлено' });
   } catch (e) {
     await conn.rollback();
     console.error(e);
@@ -153,10 +153,10 @@ router.delete('/:id', authenticate, requirePermission('manage_pipettes'), async 
     await conn.query('DELETE FROM pipettes WHERE id = ?', [req.params.id]);
     await conn.query(
       'INSERT INTO audit_log (user_id, user_full_name, action, details) VALUES (?, ?, ?, ?)',
-      [req.user.id, req.user.full_name, 'Удаление пипетки', `${req.params.id} (${exist[0].model})`]
+      [req.user.id, req.user.full_name, 'Удаление оборудования', `${req.params.id} (${exist[0].model})`]
     );
     await conn.commit();
-    res.json({ message: 'Пипетка удалена' });
+    res.json({ message: 'Оборудование удалено' });
   } catch (e) {
     await conn.rollback();
     res.status(500).json({ error: 'Ошибка удаления' });
@@ -171,13 +171,13 @@ router.post('/bulk-send', authenticate, requirePermission('manage_pipettes'), as
   const { ids, sentDate, note } = req.body;
 
   if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'Не выбрано ни одной пипетки' });
+    return res.status(400).json({ error: 'Не выбрано ни одной единицы оборудования' });
   }
   if (!sentDate) {
     return res.status(400).json({ error: 'Дата отправки обязательна' });
   }
   if (ids.length > 100) {
-    return res.status(400).json({ error: 'Слишком много пипеток за раз (максимум 100)' });
+    return res.status(400).json({ error: 'Слишком много единиц за раз' (максимум 100)' });
   }
 
   const conn = await db.getConnection();
@@ -251,13 +251,13 @@ router.post('/bulk-return', authenticate, requirePermission('manage_pipettes'), 
   const { items, date, org, note } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'Не выбрано ни одной пипетки' });
+    return res.status(400).json({ error: 'Не выбрано ни одной единицы оборудования' });
   }
   if (!date) {
     return res.status(400).json({ error: 'Дата поверки обязательна' });
   }
   if (items.length > 100) {
-    return res.status(400).json({ error: 'Слишком много пипеток за раз (максимум 100)' });
+    return res.status(400).json({ error: 'Слишком много единиц за раз' (максимум 100)' });
   }
 
   const conn = await db.getConnection();
@@ -314,7 +314,7 @@ router.post('/bulk-return', authenticate, requirePermission('manage_pipettes'), 
 
     await conn.commit();
     res.status(201).json({
-      message: `Возврат оформлен для ${successful.length} пипеток`,
+      message: `Возврат оформлен для ${successful.length} единиц`,
       successful: successful.length,
       skipped: skipped.length,
       skippedIds: skipped
