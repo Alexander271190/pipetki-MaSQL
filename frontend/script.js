@@ -1590,7 +1590,7 @@ async function renderFieldsSettings(skipFetch = false) {
           <button class="btn btn-secondary btn-sm" onclick="moveFieldSetting(${i},1)">▼</button>
         </div></td>
         <td><input type="text" value="${esc(f.label)}" onchange="_cachedFields[${i}].label=this.value"></td>
-        <td><select onchange="_cachedFields[${i}].type=this.value">
+        <td><select onchange="onFieldTypeChange(${i}, this.value)">
           <option value="text" ${f.type === 'text' ? 'selected' : ''}>Текст</option>
           <option value="number" ${f.type === 'number' ? 'selected' : ''}>Число</option>
           <option value="date" ${f.type === 'date' ? 'selected' : ''}>Дата</option>
