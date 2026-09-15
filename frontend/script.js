@@ -1168,12 +1168,11 @@ const EXPORT_FIELD_MAP = {
 },
   responsible: { label: 'Ответственный', get: p => p.responsible || '' },
   location: { label: 'Место', get: p => p.location || '' },
-  status: {
+ status: {
   label: 'Статус', get: p => {
-    const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке' };
+    const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке', fail: 'Брак' };
     return L[calcStatus(p)] || calcStatus(p);
-  const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке', fail: 'Брак' };
-      }
+  }
 },
   cert: { label: 'Свидетельство', get: p => p.cert || '' },
   notes: { label: 'Примечание', get: p => p.notes || '' }
