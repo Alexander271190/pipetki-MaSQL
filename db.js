@@ -68,8 +68,10 @@ async function initSchema() {
         active TINYINT DEFAULT 1,
         responsible VARCHAR(255),
         location VARCHAR(255),
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+       notes TEXT,
+      sent_for_calibration VARCHAR(20),
+      sent_note TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
