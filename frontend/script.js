@@ -2407,9 +2407,7 @@ async function renderBackupSettings() {
       });
     }
     html += `</div>`;
-
     c.innerHTML = html;
-    updateAutoBackupStatus(autoSettings);
   } catch (e) {
     c.innerHTML = '<p style="color:#dc2626;">Ошибка: ' + e.message + '</p>';
   }
