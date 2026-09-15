@@ -1830,7 +1830,7 @@ async function renderFiltersSettings(skipFetch = false) {
         <td><input type="text" value="${esc(f.label)}" 
                    onchange="_cachedFilters[${i}].label=this.value"></td>
         <td>
-          <select onchange="_cachedFilters[${i}].type=this.value">
+          <td><select onchange="onFieldTypeChange(${i}, this.value)">
             <option value="text" ${f.type === 'text' ? 'selected' : ''}>Текст</option>
             <option value="select" ${f.type === 'select' ? 'selected' : ''}>Список</option>
             <option value="date-period" ${f.type === 'date-period' ? 'selected' : ''}>Период дат</option>
