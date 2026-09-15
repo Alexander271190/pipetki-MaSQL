@@ -8,12 +8,22 @@ let _cachedSubdivisions = [];
 let _cachedDepartmentsFull = [];
 let _cachedFilters = [];
 let _activeFilters = [];
+let _cachedFields = [];
+let exportFields = null;
+let selectedPipettes = new Set();
 
 // ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================
-function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('ru-RU', {day:'2-digit',month:'2-digit',year:'numeric'}); }
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -49,7 +59,6 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
 // ============================================================
 // АВТОРИЗАЦИЯ
 // ============================================================
-
 function getSession() {
   try {
     const data = JSON.parse(sessionStorage.getItem('pipette_session'));
@@ -62,7 +71,6 @@ function getSession() {
   return null;
 }
 
-// setSession(user, token, originalUser, originalToken)
 function setSession(user, token, originalUser, originalToken) {
   const data = { user, token };
   if (originalUser && originalToken) {
@@ -97,8 +105,9 @@ function getOriginalToken() {
 function isImpersonating() {
   return !!getOriginalUser();
 }
+
 // ============================================================
-// ПРАВА ПОЛЬЗОВАТЕЛЕЙ
+// ПРАВА
 // ============================================================
 function getBasePermissions(role) {
   if (role === 'admin') return ['manage_pipettes', 'import_data', 'export_data'];
@@ -107,8 +116,8 @@ function getBasePermissions(role) {
 
 const PERMISSION_LABELS = {
   'manage_pipettes': 'Управление пипетками',
-  'import_data':     'Импорт данных',
-  'export_data':     'Экспорт данных'
+  'import_data': 'Импорт данных',
+  'export_data': 'Экспорт данных'
 };
 
 function hasPermission(permission) {
@@ -122,9 +131,8 @@ function hasPermission(permission) {
 }
 
 function canManagePipettes() { return hasPermission('manage_pipettes'); }
-function canImport()         { return hasPermission('import_data'); }
-function canExport()         { return hasPermission('export_data'); }
-
+function canImport() { return hasPermission('import_data'); }
+function canExport() { return hasPermission('export_data'); }
 function isAuthenticated() { return !!currentUser; }
 function isAdmin() { return currentUser && currentUser.role === 'admin'; }
 function isSeniorLab() { return currentUser && currentUser.role === 'senior_lab'; }
@@ -159,11 +167,11 @@ function logoutUser() {
   renderAuthUI();
   showToast('Вы вышли из системы', 'success');
 }
+
 // ============================================================
 // IMPERSONATE
 // ============================================================
 async function impersonateUser(userId) {
-  // Если уже в режиме impersonate — возвращаемся сначала
   const originalUser = getOriginalUser() || currentUser;
   const originalToken = getOriginalToken() || authToken;
 
@@ -184,7 +192,6 @@ function stopImpersonate() {
     showToast('Вы не в режиме переключения', 'error');
     return;
   }
-  // Возвращаемся к оригиналу
   authToken = originalToken;
   currentUser = originalUser;
   sessionStorage.setItem('pipette_session', JSON.stringify({
@@ -214,6 +221,12 @@ async function loadPipetteData() {
     pipettes = data;
     const settingsData = await apiRequest('/settings/system');
     settings = { warnDays: parseInt(settingsData.warn_days) || 30 };
+
+    try {
+      exportFields = await apiRequest('/settings/export');
+    } catch (e) {
+      exportFields = null;
+    }
 
     await loadDepartments();
     await loadSubdivisions();
@@ -260,7 +273,8 @@ async function loadFilterConfig() {
             { value: 'ok', label: 'В норме' },
             { value: 'warn', label: 'Скоро поверка' },
             { value: 'danger', label: 'Просрочены' },
-            { value: 'inactive', label: 'Неактивны' }
+            { value: 'inactive', label: 'Неактивны' },
+            { value: 'sent', label: '📦 На поверке' }
           ];
         } else if (f.optionsSource === 'active_list') {
           f.options = [
@@ -278,11 +292,13 @@ async function loadFilterConfig() {
     _activeFilters = [];
   }
 }
+
 // ============================================================
-// СТАТУСЫ ПИПЕТОК
+// СТАТУСЫ
 // ============================================================
 function calcStatus(p) {
   if (!p.active) return 'inactive';
+  if (p.sent_for_calibration) return 'sent';
   if (!p.last_calibration || !p.interval) return 'danger';
   const last = new Date(p.last_calibration);
   const next = new Date(last);
@@ -308,9 +324,8 @@ function daysLeft(p) {
   return Math.ceil((next - now) / 86400000);
 }
 
-
 // ============================================================
-// РЕНДЕР
+// РЕНДЕР ТАБЛИЦЫ
 // ============================================================
 function render() {
   let filtered = getFilteredPipettes();
@@ -332,12 +347,13 @@ function render() {
     return 0;
   });
 
-  let ok = 0, warn = 0, danger = 0;
+  let ok = 0, warn = 0, danger = 0, sent = 0;
   pipettes.forEach(p => {
     const s = calcStatus(p);
     if (s === 'ok') ok++;
     else if (s === 'warn') warn++;
     else if (s === 'danger') danger++;
+    else if (s === 'sent') sent++;
   });
   document.getElementById('stat-ok').textContent = ok;
   document.getElementById('stat-warn').textContent = warn;
@@ -364,40 +380,69 @@ function render() {
     table.style.display = 'none';
     empty.style.display = 'block';
     if (pipettes.length > 0) empty.querySelector('p').textContent = 'Ничего не найдено по фильтру.';
+    updateSelectAllCheckbox();
+    updateBulkCalButton();
     return;
   }
   table.style.display = '';
   empty.style.display = 'none';
 
   const canManage = canManagePipettes();
-  const labels = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна' };
+  const labels = {
+    ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена',
+    inactive: 'Неактивна', sent: '📦 На поверке'
+  };
 
   tbody.innerHTML = filtered.map(p => {
     const status = calcStatus(p);
     const next = getNextDate(p);
     const dl = daysLeft(p);
-    const daysText = status === 'inactive' ? '' :
+    const daysText = status === 'inactive' || status === 'sent' ? '' :
       status === 'danger' ? ` (просрочка ${Math.abs(dl)} дн.)` :
       ` (${dl} дн.)`;
     const histCount = (p.history || []).length;
+    const isChecked = selectedPipettes.has(p.id) ? 'checked' : '';
+
     let actionsHtml = '';
     if (canManage) {
-      actionsHtml = `<div class="action-btns">
-        <button class="btn btn-secondary btn-sm" onclick="openModal('${p.id}')" title="Редактировать">✏️</button>
-        <button class="btn btn-info btn-sm" onclick="openHistoryModal('${p.id}')" title="История поверок (${histCount})">📋</button>
-        <button class="btn btn-success btn-sm" onclick="openQuickCalModal('${p.id}')" title="Быстрая поверка">✔️</button>
-        <button class="btn btn-danger btn-sm" onclick="deletePipette('${p.id}')" title="Удалить">🗑️</button>
-      </div>`;
+      if (status === 'sent') {
+        actionsHtml = `<div class="action-btns">
+          <button class="btn btn-secondary btn-sm" onclick="openModal('${p.id}')" title="Редактировать">✏️</button>
+          <button class="btn btn-info btn-sm" onclick="openHistoryModal('${p.id}')" title="История поверок (${histCount})">📋</button>
+          <button class="btn btn-success btn-sm" onclick="openQuickCalModal('${p.id}')" title="Вернулась с поверки">📥</button>
+          <button class="btn btn-warning btn-sm" onclick="cancelSend('${p.id}')" title="Отменить отправку">↩️</button>
+          <button class="btn btn-danger btn-sm" onclick="deletePipette('${p.id}')" title="Удалить">🗑️</button>
+        </div>`;
+      } else {
+        actionsHtml = `<div class="action-btns">
+          <button class="btn btn-secondary btn-sm" onclick="openModal('${p.id}')" title="Редактировать">✏️</button>
+          <button class="btn btn-info btn-sm" onclick="openHistoryModal('${p.id}')" title="История поверок (${histCount})">📋</button>
+          <button class="btn btn-success btn-sm" onclick="openQuickCalModal('${p.id}')" title="Быстрая поверка">✔️</button>
+          <button class="btn btn-danger btn-sm" onclick="deletePipette('${p.id}')" title="Удалить">🗑️</button>
+        </div>`;
+      }
     } else {
       actionsHtml = `<button class="btn btn-info btn-sm" onclick="openHistoryModal('${p.id}')" title="История поверок (${histCount})">📋</button>`;
     }
+
     return `<tr>
+      <td class="col-checkbox">
+        <input type="checkbox" class="row-checkbox" 
+               data-id="${esc(p.id)}" 
+               ${isChecked}
+               onchange="togglePipetteSelection('${esc(p.id)}', this.checked)">
+      </td>
       <td><strong>${esc(p.id)}</strong>${p.serial ? `<br><small style="color:#94a3b8">S/N: ${esc(p.serial)}</small>` : ''}</td>
       <td>${esc(p.model)}${p.manufacturer ? `<br><small style="color:#94a3b8">${esc(p.manufacturer)}</small>` : ''}</td>
       <td>${p.volume ? esc(p.volume) + ' мкл' : '—'}</td>
       <td>${esc(p.department || '—')}</td>
       <td>${formatDate(p.last_calibration)}</td>
-      <td>${formatDate(next)}${daysText ? `<br><small style="color:${status === 'danger' ? '#dc2626' : status === 'warn' ? '#eab308' : '#16a34a'}">${daysText}</small>` : ''}</td>
+      <td>${
+        status === 'sent'
+          ? `<small style="color:#0ea5e9;font-weight:600;">📦 Отправлена ${formatDate(p.sent_for_calibration)}</small>
+             ${p.sent_note ? `<br><small style="color:#64748b;font-style:italic;">${esc(p.sent_note)}</small>` : ''}`
+          : `${formatDate(next)}${daysText ? `<br><small style="color:${status === 'danger' ? '#dc2626' : status === 'warn' ? '#eab308' : '#16a34a'}">${daysText}</small>` : ''}`
+      }</td>
       <td>${esc(p.responsible || '—')}${p.location ? `<br><small style="color:#94a3b8">${esc(p.location)}</small>` : ''}</td>
       <td><span class="status-badge status-${status}"><span class="status-dot"></span>${labels[status]}</span></td>
       <td>${actionsHtml}</td>
@@ -405,6 +450,8 @@ function render() {
   }).join('');
 
   updateSortArrows();
+  updateSelectAllCheckbox();
+  updateBulkCalButton();
 }
 
 function updateSortArrows() {
@@ -422,7 +469,104 @@ function sortBy(field) {
 }
 
 // ============================================================
-// ФИЛЬТРЫ (динамические из filter_config)
+// МАССОВЫЙ ВЫБОР
+// ============================================================
+function togglePipetteSelection(id, checked) {
+  if (checked) selectedPipettes.add(id);
+  else selectedPipettes.delete(id);
+  updateSelectAllCheckbox();
+  updateBulkCalButton();
+}
+
+function toggleSelectAll(checked) {
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  if (checked) {
+    visibleIds.forEach(id => selectedPipettes.add(id));
+  } else {
+    visibleIds.forEach(id => selectedPipettes.delete(id));
+  }
+  document.querySelectorAll('.row-checkbox').forEach(cb => {
+    cb.checked = checked;
+  });
+  updateBulkCalButton();
+}
+
+function updateSelectAllCheckbox() {
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const master = document.getElementById('select-all-checkbox');
+  if (!master) return;
+
+  if (visibleIds.length === 0) {
+    master.checked = false;
+    master.indeterminate = false;
+    master.disabled = true;
+    return;
+  }
+
+  const selectedVisible = visibleIds.filter(id => selectedPipettes.has(id));
+  master.disabled = false;
+
+  if (selectedVisible.length === 0) {
+    master.checked = false;
+    master.indeterminate = false;
+  } else if (selectedVisible.length === visibleIds.length) {
+    master.checked = true;
+    master.indeterminate = false;
+  } else {
+    master.checked = false;
+    master.indeterminate = true;
+  }
+}
+
+function updateBulkCalButton() {
+  const btnSend = document.getElementById('btn-bulk-cal');
+  const btnReturn = document.getElementById('btn-bulk-return');
+  const counterSend = document.getElementById('bulk-counter');
+  const counterReturn = document.getElementById('bulk-return-counter');
+
+  if (!btnSend && !btnReturn) return;
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const visibleSelected = [...selectedPipettes].filter(id => visibleIds.includes(id));
+
+  const toSend = visibleSelected.filter(id => {
+    const p = pipettes.find(x => x.id === id);
+    return p && !p.sent_for_calibration;
+  });
+
+  const toReturn = visibleSelected.filter(id => {
+    const p = pipettes.find(x => x.id === id);
+    return p && p.sent_for_calibration;
+  });
+
+  if (btnSend) {
+    if (toSend.length > 0) {
+      btnSend.style.display = 'inline-flex';
+      if (counterSend) counterSend.textContent = toSend.length;
+    } else {
+      btnSend.style.display = 'none';
+    }
+  }
+
+  if (btnReturn) {
+    if (toReturn.length > 0) {
+      btnReturn.style.display = 'inline-flex';
+      if (counterReturn) counterReturn.textContent = toReturn.length;
+    } else {
+      btnReturn.style.display = 'none';
+    }
+  }
+}
+
+function clearSelection() {
+  selectedPipettes.clear();
+  document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+  updateSelectAllCheckbox();
+  updateBulkCalButton();
+}
+
+// ============================================================
+// ФИЛЬТРЫ
 // ============================================================
 let filterState = {};
 let _filterRendered = false;
@@ -502,7 +646,7 @@ function toggleFilterPanel() {
 
 function applyFilters() {
   filterState = {};
-  for (const f of _activeFilters) {                     // ← _activeFilters
+  for (const f of _activeFilters) {
     const fid = `filter-${f.id}`;
     if (f.type === 'date-period') {
       const typeEl = document.getElementById(`${fid}-type`);
@@ -521,12 +665,18 @@ function applyFilters() {
     }
   }
   document.getElementById('filter-panel').classList.remove('show');
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  for (const id of [...selectedPipettes]) {
+    if (!visibleIds.includes(id)) selectedPipettes.delete(id);
+  }
+
   render();
 }
 
 function resetFilters() {
   filterState = {};
-  for (const f of _activeFilters) {                     // ← _activeFilters
+  for (const f of _activeFilters) {
     const fid = `filter-${f.id}`;
     if (f.type === 'date-period') {
       const typeEl = document.getElementById(`${fid}-type`);
@@ -555,10 +705,9 @@ function getFilteredPipettes() {
   return pipettes.filter(p => {
     const s = `${p.id} ${p.serial || ''} ${p.model} ${p.manufacturer || ''} ${p.department || ''} ${p.subdivision || ''} ${p.responsible || ''}`.toLowerCase();
     if (search && !s.includes(search)) return false;
-
     if (userDept && p.department !== userDept) return false;
 
-    for (const f of _activeFilters) {                   // ← _activeFilters
+    for (const f of _activeFilters) {
       const v = filterState[f.id];
 
       if (f.type === 'select') {
@@ -580,11 +729,11 @@ function getFilteredPipettes() {
       }
     }
 
-    return true;                                        
+    return true;
   });
- }
+}
 
- function matchCalPeriodDynamic(p, cfg) {
+function matchCalPeriodDynamic(p, cfg) {
   let dateStr;
   if (cfg.type === 'updated_at') {
     dateStr = p.updated_at || p.created_at;
@@ -602,10 +751,10 @@ function getFilteredPipettes() {
   const diffDays = Math.round((today - targetDate) / 86400000);
 
   switch (cfg.period) {
-    case 'today':      return diffDays === 0;
-    case 'yesterday':  return diffDays === 1;
-    case 'week':       return diffDays >= 0 && diffDays <= 7;
-    case 'month':      return diffDays >= 0 && diffDays <= 30;
+    case 'today': return diffDays === 0;
+    case 'yesterday': return diffDays === 1;
+    case 'week': return diffDays >= 0 && diffDays <= 7;
+    case 'month': return diffDays >= 0 && diffDays <= 30;
     case 'custom':
       if (cfg.from) {
         const from = new Date(cfg.from); from.setHours(0, 0, 0, 0);
@@ -621,14 +770,13 @@ function getFilteredPipettes() {
 }
 
 // ============================================================
-// ДИНАМИЧЕСКАЯ ФОРМА (загружает поля с сервера)
+// ДИНАМИЧЕСКАЯ ФОРМА
 // ============================================================
 async function generateFormFields(data = null) {
   const container = document.getElementById('form-fields-container');
   container.innerHTML = '<p style="color:#94a3b8;padding:10px;">Загрузка полей…</p>';
 
   try {
-    // Загружаем конфигурацию полей с сервера
     const allFields = await apiRequest('/settings/fields');
     const fields = allFields
       .filter(f => f.enabled)
@@ -636,21 +784,15 @@ async function generateFormFields(data = null) {
 
     container.innerHTML = '';
 
-    // Если полей нет — предупреждаем
     if (fields.length === 0) {
       container.innerHTML = '<p style="color:#dc2626;padding:10px;">Нет активных полей. Включите их в настройках.</p>';
       return;
     }
 
-        // Загружаем справочники (для полей department и subdivision)
     let departmentsList = [];
     let subdivisionsList = [];
-    try {
-      departmentsList = await apiRequest('/settings/departments');
-    } catch (e) { /* игнорируем */ }
-    try {
-      subdivisionsList = await apiRequest('/settings/subdivisions');
-    } catch (e) { /* игнорируем */ }
+    try { departmentsList = await apiRequest('/settings/departments'); } catch (e) {}
+    try { subdivisionsList = await apiRequest('/settings/subdivisions'); } catch (e) {}
 
     for (const f of fields) {
       const div = document.createElement('div');
@@ -660,7 +802,6 @@ async function generateFormFields(data = null) {
       label.textContent = f.label + (f.required ? ' *' : '');
       div.appendChild(label);
 
-      // Значение поля: из data (при редактировании) или default
       let val;
       if (data && data[f.id] !== undefined && data[f.id] !== null) {
         val = data[f.id];
@@ -675,39 +816,32 @@ async function generateFormFields(data = null) {
         input.rows = 2;
         input.placeholder = f.label;
         input.value = val;
-
       } else if (f.type === 'select') {
         input = document.createElement('select');
 
-        // Определяем опции для выпадающего списка
         let opts = [];
 
-      if (f.id === 'department') {
+        if (f.id === 'department') {
           opts = departmentsList.length ? departmentsList : (f.options || []);
-        } else if (f.id === 'subdivision') {              
+        } else if (f.id === 'subdivision') {
           opts = subdivisionsList.length ? subdivisionsList : (f.options || []);
         } else if (f.id === 'result') {
-          // Результат поверки — фиксированные значения с русскими метками
           opts = [
             { value: 'pass', label: '✅ Годен' },
             { value: 'fail', label: '❌ Брак' },
-            { value: 'wip',  label: '⏳ В процессе' }
+            { value: 'wip', label: '⏳ В процессе' }
           ];
         } else if (f.id === 'active') {
-          // Статус эксплуатации — понятные русские метки
           opts = [
-            { value: 'true',  label: '✅ В работе' },
+            { value: 'true', label: '✅ В работе' },
             { value: 'false', label: '⛔ Не используется' }
           ];
         } else {
-          // Обычное поле — берём options из конфигурации
           opts = f.options || [];
         }
 
-        // Если пусто — ставим пустую опцию
         if (opts.length === 0) opts = [{ value: '', label: '—' }];
 
-        // Строим <option>
         opts.forEach(opt => {
           const optValue = (typeof opt === 'object') ? opt.value : opt;
           const optLabel = (typeof opt === 'object') ? opt.label : (opt || '—');
@@ -717,13 +851,11 @@ async function generateFormFields(data = null) {
           if (String(val) === String(optValue)) option.selected = true;
           input.appendChild(option);
         });
-
       } else {
-        // Обычный input (text, number, date)
         input = document.createElement('input');
         input.type = f.type === 'date' ? 'date'
-                   : f.type === 'number' ? 'number'
-                   : 'text';
+          : f.type === 'number' ? 'number'
+          : 'text';
         input.placeholder = f.label;
         input.value = val;
       }
@@ -736,14 +868,12 @@ async function generateFormFields(data = null) {
       container.appendChild(div);
     }
 
-    // Если поле «Отдел» включено — заполняем datalist (если он есть)
     if (document.getElementById('p-department')) {
       const datalist = document.getElementById('dept-list');
       if (datalist) {
         datalist.innerHTML = departmentsList.map(d => `<option value="${esc(d)}">`).join('');
       }
     }
-
   } catch (err) {
     console.error('Ошибка загрузки полей:', err);
     container.innerHTML = '<p style="color:#dc2626;padding:10px;">Ошибка загрузки полей: ' + esc(err.message) + '</p>';
@@ -751,7 +881,7 @@ async function generateFormFields(data = null) {
 }
 
 // ============================================================
-// ОТКРЫТИЕ МОДАЛКИ (добавление / редактирование)
+// МОДАЛКА ПИПЕТКИ
 // ============================================================
 async function openModal(id) {
   if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
@@ -761,31 +891,21 @@ async function openModal(id) {
   document.getElementById('edit-id').value = '';
 
   if (id) {
-    // Режим редактирования
     const p = pipettes.find(x => x.id === id);
     if (!p) { showToast('Пипетка не найдена', 'error'); return; }
 
     title.textContent = '✏️ Редактировать пипетку';
     document.getElementById('edit-id').value = p.id;
-
-    // Показываем модалку сразу (форма подгрузится асинхронно)
     modal.classList.add('active');
-
-    // Заполняем форму данными
     await generateFormFields(p);
-
   } else {
-    // Режим добавления
     title.textContent = '➕ Добавить пипетку';
-
-    // Подготавливаем значения по умолчанию
     const defaultData = {
       lastCalibration: new Date().toISOString().slice(0, 10),
       interval: 12,
       result: 'pass',
       active: 'true'
     };
-
     modal.classList.add('active');
     await generateFormFields(defaultData);
   }
@@ -846,12 +966,14 @@ async function savePipette(e) {
     showToast(error.message || 'Ошибка сохранения', 'error');
   }
 }
+
 async function deletePipette(id) {
   if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
   if (!confirm(`Удалить пипетку ${id} со всей историей?`)) return;
   try {
     await apiRequest(`/pipettes/${id}`, 'DELETE');
     showToast('Пипетка удалена', 'success');
+    selectedPipettes.delete(id);
     await loadPipetteData();
   } catch (error) {
     showToast(error.message || 'Ошибка удаления', 'error');
@@ -859,7 +981,7 @@ async function deletePipette(id) {
 }
 
 // ============================================================
-// БЫСТРАЯ ПОВЕРКА
+// БЫСТРАЯ ПОВЕРКА (одна пипетка)
 // ============================================================
 function openQuickCalModal(id) {
   if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
@@ -902,6 +1024,27 @@ async function saveQuickCalibration() {
 }
 
 // ============================================================
+// ОТМЕНА ОТПРАВКИ
+// ============================================================
+async function cancelSend(id) {
+  if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
+  const p = pipettes.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Отменить отправку пипетки ${id} на поверку?`)) return;
+
+  try {
+    await apiRequest(`/pipettes/${id}`, 'PUT', {
+      sentForCalibration: null,
+      sentNote: null
+    });
+    showToast('Отправка отменена', 'success');
+    await loadPipetteData();
+  } catch (e) {
+    showToast(e.message || 'Ошибка отмены', 'error');
+  }
+}
+
+// ============================================================
 // ИСТОРИЯ
 // ============================================================
 async function openHistoryModal(id) {
@@ -924,7 +1067,10 @@ async function renderHistoryContent(p) {
   const content = document.getElementById('history-content');
   const next = getNextDate(p);
   const status = calcStatus(p);
-  const statusLabels = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна' };
+  const statusLabels = {
+    ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена',
+    inactive: 'Неактивна', sent: '📦 На поверке'
+  };
 
   let history = [];
   try {
@@ -945,6 +1091,8 @@ async function renderHistoryContent(p) {
       <div><label>Статус</label><span><span class="status-badge status-${status}"><span class="status-dot"></span>${statusLabels[status]}</span></span></div>
       <div><label>Ответственный</label><span>${esc(p.responsible || '—')}</span></div>
       <div><label>Место хранения</label><span>${esc(p.location || '—')}</span></div>
+      ${p.sent_for_calibration ? `<div><label>Отправлена на поверку</label><span>${formatDate(p.sent_for_calibration)}</span></div>` : ''}
+      ${p.sent_note ? `<div><label>Примечание к отправке</label><span>${esc(p.sent_note)}</span></div>` : ''}
     </div>
   `;
 
@@ -1007,29 +1155,56 @@ async function addCalibrationRecord() {
     showToast(error.message || 'Ошибка сохранения', 'error');
   }
 }
+
 // ============================================================
 // ЭКСПОРТ
 // ============================================================
+const EXPORT_FIELD_MAP = {
+  id: { label: 'ID', get: p => p.id },
+  serial: { label: 'Серийный', get: p => p.serial || '' },
+  manufacturer: { label: 'Производитель', get: p => p.manufacturer || '' },
+  model: { label: 'Модель', get: p => p.model },
+  volume: { label: 'Объём', get: p => p.volume || '' },
+  department: { label: 'Отдел', get: p => p.department || '' },
+  lastCalibration: { label: 'Дата поверки', get: p => formatDate(p.last_calibration) },
+  nextCalibration: { label: 'Следующая', get: p => formatDate(getNextDate(p)) },
+  interval: { label: 'МПИ', get: p => p.interval || '' },
+  daysLeft: {
+    label: 'Дней', get: p => {
+      const s = calcStatus(p); const dl = daysLeft(p);
+      return s === 'inactive' ? '—' : (s === 'sent' ? 'на поверке' : (dl < 0 ? 'просрочка ' + Math.abs(dl) + ' дн.' : dl + ' дн.'));
+    }
+  },
+  responsible: { label: 'Ответственный', get: p => p.responsible || '' },
+  location: { label: 'Место', get: p => p.location || '' },
+  status: {
+    label: 'Статус', get: p => {
+      const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке' };
+      return L[calcStatus(p)] || calcStatus(p);
+    }
+  },
+  cert: { label: 'Свидетельство', get: p => p.cert || '' },
+  notes: { label: 'Примечание', get: p => p.notes || '' }
+};
+
+function getActiveExportFields() {
+  if (exportFields && Array.isArray(exportFields) && exportFields.length > 0) {
+    return exportFields.filter(f => EXPORT_FIELD_MAP[f]);
+  }
+  return Object.keys(EXPORT_FIELD_MAP);
+}
+
 async function exportToExcel() {
-    if (!canExport()) { showToast('Нет прав на экспорт', 'error'); return; }
+  if (!canExport()) { showToast('Нет прав на экспорт', 'error'); return; }
   const data = getFilteredPipettes();
   if (data.length === 0) { showToast('Нет данных для экспорта', 'error'); return; }
 
-  const headers = ['ID', 'Серийный', 'Производитель', 'Модель', 'Объём', 'Отдел', 'Дата поверки', 'Следующая', 'МПИ', 'Дней', 'Ответственный', 'Место', 'Статус', 'Свидетельство', 'Примечание'];
-  const labels = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна' };
+  const fields = getActiveExportFields();
+  const headers = fields.map(f => EXPORT_FIELD_MAP[f].label);
 
   const csvLines = [headers.join(';')];
   data.forEach(p => {
-    const next = getNextDate(p);
-    const status = calcStatus(p);
-    const dl = daysLeft(p);
-    const dlText = status === 'inactive' ? '—' : (dl < 0 ? 'просрочка ' + Math.abs(dl) + ' дн.' : dl + ' дн.');
-    const row = [
-      p.id, p.serial || '', p.manufacturer || '', p.model, p.volume || '',
-      p.department || '', formatDate(p.last_calibration), formatDate(next),
-      p.interval || '', dlText, p.responsible || '', p.location || '',
-      labels[status] || status, p.cert || '', p.notes || ''
-    ];
+    const row = fields.map(f => EXPORT_FIELD_MAP[f].get(p));
     const line = row.map(v => {
       const s = String(v).replace(/"/g, '""');
       return /[";]/.test(s) ? '"' + s + '"' : s;
@@ -1045,36 +1220,47 @@ async function exportToExcel() {
   a.download = `pipettes_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('Файл Excel (CSV) сохранён', 'success');
+  showToast(`Экспорт: ${fields.length} полей, ${data.length} записей`, 'success');
 }
 
 function exportToPDF() {
- if (!canExport()) { showToast('Нет прав на экспорт', 'error'); return; }
+  if (!canExport()) { showToast('Нет прав на экспорт', 'error'); return; }
   const data = getFilteredPipettes();
   if (data.length === 0) { showToast('Нет данных для экспорта', 'error'); return; }
 
-  const labels = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна' };
+  const fields = getActiveExportFields();
   const today = new Date().toLocaleDateString('ru-RU');
   const user = currentUser ? currentUser.fullName : '';
 
+  const headerCells = fields
+    .map(f => `<th>${esc(EXPORT_FIELD_MAP[f].label)}</th>`)
+    .join('');
+
   const rows = data.map(p => {
-    const next = getNextDate(p);
-    const status = calcStatus(p);
-    const dl = daysLeft(p);
-    const dlText = status === 'inactive' ? '—'
-      : (dl < 0 ? 'просрочка ' + Math.abs(dl) + ' дн.' : dl + ' дн.');
-    return `
-      <tr>
-        <td>${esc(p.id)}</td>
-        <td>${esc(p.model)}${p.manufacturer ? '<br><small>' + esc(p.manufacturer) + '</small>' : ''}</td>
-        <td>${esc(p.serial || '—')}</td>
-        <td>${p.volume ? esc(p.volume) + ' мкл' : '—'}</td>
-        <td>${esc(p.department || '—')}</td>
-        <td>${formatDate(p.last_calibration)}</td>
-        <td>${formatDate(next)}${dlText !== '—' ? '<br><small>' + dlText + '</small>' : ''}</td>
-        <td>${esc(p.responsible || '—')}</td>
-        <td><span class="status-${status}">${labels[status]}</span></td>
-      </tr>`;
+    const cells = fields.map(f => {
+      const val = EXPORT_FIELD_MAP[f].get(p);
+      if (f === 'status') {
+        const st = calcStatus(p);
+        return `<td><span class="status-${st}">${esc(val)}</span></td>`;
+      }
+      if (f === 'model' && p.manufacturer) {
+        return `<td>${esc(p.model)}<br><small>${esc(p.manufacturer)}</small></td>`;
+      }
+      if (f === 'responsible' && p.location) {
+        return `<td>${esc(p.responsible || '—')}<br><small>${esc(p.location)}</small></td>`;
+      }
+      if (f === 'nextCalibration') {
+        const st = calcStatus(p);
+        if (st === 'sent') {
+          return `<td>📦 ${formatDate(p.sent_for_calibration)}</td>`;
+        }
+        const dl = daysLeft(p);
+        const dlText = st === 'inactive' ? '' : (dl < 0 ? 'просрочка ' + Math.abs(dl) + ' дн.' : dl + ' дн.');
+        return `<td>${esc(val)}${dlText ? '<br><small>' + dlText + '</small>' : ''}</td>`;
+      }
+      return `<td>${esc(val)}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
   }).join('');
 
   const win = window.open('', '_blank');
@@ -1093,45 +1279,31 @@ function exportToPDF() {
       td { padding: 5px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
       tr:nth-child(even) td { background: #f8fafc; }
       small { color: #94a3b8; font-size: 7.5pt; }
-      .status-ok { color: #16a34a; font-weight: 600; }
-      .status-warn { color: #ca8a04; font-weight: 600; }
-      .status-danger { color: #dc2626; font-weight: 700; }
+      .status-ok       { color: #16a34a; font-weight: 600; }
+      .status-warn     { color: #ca8a04; font-weight: 600; }
+      .status-danger   { color: #dc2626; font-weight: 700; }
       .status-inactive { color: #94a3b8; }
-      .footer {
-  margin-top: 15px;
-  font-size: 8pt;
-  color: #000000;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top: 1px solid #e2e8f0;
-  padding-top: 8px;
-}
-.footer .sign { margin-top: 0; }
+      .status-sent     { color: #0ea5e9; font-weight: 600; }
+      .footer { margin-top: 15px; font-size: 8pt; color: #000; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 8px; }
     </style></head><body>
       <h1>🔬 Реестр пипеток — КГБУЗ Краевая клиническая больница КДЛ</h1>
       <div class="meta">Дата: <b>${today}</b> · Записей: <b>${data.length}</b> · Сформировал: <b>${esc(user)}</b></div>
       <table>
-        <thead><tr>
-          <th style="width:8%">ID</th><th style="width:16%">Модель / Производитель</th>
-          <th style="width:10%">Серийный</th><th style="width:8%">Объём</th>
-          <th style="width:14%">Отдел</th><th style="width:10%">Поверка</th>
-          <th style="width:12%">Следующая</th><th style="width:12%">Ответственный</th>
-          <th style="width:10%">Статус</th>
-        </tr></thead>
+        <thead><tr>${headerCells}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <div class="footer">
         <div>Документ сформировал: <b>${esc(user)}</b></div>
-        <div class="sign">Подпись: _______________</div>
+        <div>Подпись: _______________</div>
       </div>
     </body></html>`);
   win.document.close();
   setTimeout(() => { win.focus(); win.print(); }, 300);
-  showToast('Окно печати открыто — выберите «Сохранить как PDF»', 'success');
+  showToast(`PDF: ${fields.length} полей, ${data.length} записей`, 'success');
 }
+
 // ============================================================
-// ВЫПАДАЮЩЕЕ МЕНЮ ЭКСПОРТА
+// МЕНЮ ЭКСПОРТА
 // ============================================================
 function toggleExportMenu(e) {
   if (e) e.stopPropagation();
@@ -1144,15 +1316,15 @@ function closeExportMenu() {
   if (menu) menu.classList.remove('show');
 }
 
-// Закрываем меню при клике вне него
 document.addEventListener('click', (e) => {
   const dropdown = document.getElementById('export-dropdown');
   if (dropdown && !dropdown.contains(e.target)) {
     closeExportMenu();
   }
 });
+
 // ============================================================
-// НАПОМИНАНИЕ
+// НАПОМИНАНИЯ
 // ============================================================
 function checkReminder() {
   const lastShown = localStorage.getItem('pipette_last_reminder');
@@ -1238,19 +1410,16 @@ function renderAuthUI() {
     if (currentUser.department) posText += ' · ' + currentUser.department;
     document.getElementById('user-position').textContent = posText;
 
-    // Кнопка «Вернуться» — показываем только в режиме impersonate
     const btnStop = document.getElementById('btn-impersonate-stop');
     if (btnStop) {
       btnStop.style.display = isImpersonating() ? 'inline-flex' : 'none';
     }
 
-    // Проверяем права
     const canManage = hasPermission('manage_pipettes');
     const canImport = hasPermission('import_data');
     const canExport = hasPermission('export_data');
     const admin = isAdmin();
 
-    // Показ/скрытие кнопок по правам
     document.querySelectorAll('.btn-add-pipette').forEach(el => el.style.display = canManage ? 'inline-flex' : 'none');
     document.querySelectorAll('.btn-import').forEach(el => el.style.display = canImport ? 'inline-flex' : 'none');
     document.querySelectorAll('.btn-export').forEach(el => el.style.display = canExport ? 'inline-flex' : 'none');
@@ -1265,7 +1434,6 @@ function renderAuthUI() {
     document.body.classList.toggle('is-admin', admin);
 
     loadPipetteData();
-
   } else {
     authContainer.classList.remove('hidden');
     mainContent.classList.remove('visible');
@@ -1275,23 +1443,31 @@ function renderAuthUI() {
   }
 }
 
-
 // ============================================================
 // ИНИЦИАЛИЗАЦИЯ
 // ============================================================
-document.getElementById('search').addEventListener('input', render);
+document.getElementById('search').addEventListener('input', () => {
+  render();
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  for (const id of [...selectedPipettes]) {
+    if (!visibleIds.includes(id)) selectedPipettes.delete(id);
+  }
+  updateSelectAllCheckbox();
+  updateBulkCalButton();
+});
 document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 document.getElementById('quick-cal-modal').addEventListener('click', e => { if (e.target.id === 'quick-cal-modal') closeQuickCalModal(); });
 document.getElementById('history-modal').addEventListener('click', e => { if (e.target.id === 'history-modal') closeHistoryModal(); });
-
+document.getElementById('bulk-send-modal').addEventListener('click', e => { if (e.target.id === 'bulk-send-modal') closeBulkSendModal(); });
+document.getElementById('bulk-return-modal').addEventListener('click', e => { if (e.target.id === 'bulk-return-modal') closeBulkReturnModal(); });
 
 const session = getSession();
 if (session) {
   authToken = session.token;
   currentUser = session.user;
   renderAuthUI();
-  
 }
+
 // ============================================================
 // ИМПОРТ ДАННЫХ
 // ============================================================
@@ -1306,7 +1482,7 @@ function closeImportModal() {
 }
 
 async function handleImport() {
-  if (!canImport()) { showToast('Нет прав на импорт', 'error'); return; } 
+  if (!canImport()) { showToast('Нет прав на импорт', 'error'); return; }
   const format = document.getElementById('import-format').value;
   const fileInput = document.getElementById('import-file');
   const file = fileInput.files[0];
@@ -1370,7 +1546,6 @@ async function handleImport() {
   reader.readAsText(file, 'UTF-8');
 }
 
-
 // ============================================================
 // НАСТРОЙКИ
 // ============================================================
@@ -1385,8 +1560,6 @@ function closeSettingsModal() {
 document.getElementById('settings-modal').addEventListener('click', e => {
   if (e.target.id === 'settings-modal') closeSettingsModal();
 });
-
-let _cachedFields = [];
 
 async function switchSettingsTab(tab) {
   document.querySelectorAll('.settings-tabs .tab-btn').forEach(b => {
@@ -1409,10 +1582,13 @@ async function switchSettingsTab(tab) {
 // ============================================================
 // ВКЛАДКА: ПОЛЯ ФОРМЫ
 // ============================================================
-async function renderFieldsSettings() {
+async function renderFieldsSettings(skipFetch = false) {
   const c = document.getElementById('settings-content');
   try {
-    _cachedFields = await apiRequest('/settings/fields');
+    if (!skipFetch) {
+      _cachedFields = await apiRequest('/settings/fields');
+    }
+
     let html = `
       <h3>Управление полями формы</h3>
       <p style="color:#64748b;margin-bottom:12px;">Включите/отключите поля, измените порядок, сделайте обязательными.</p>
@@ -1435,16 +1611,16 @@ async function renderFieldsSettings() {
         </div></td>
         <td><input type="text" value="${esc(f.label)}" onchange="_cachedFields[${i}].label=this.value"></td>
         <td><select onchange="_cachedFields[${i}].type=this.value">
-          <option value="text" ${f.type==='text'?'selected':''}>Текст</option>
-          <option value="number" ${f.type==='number'?'selected':''}>Число</option>
-          <option value="date" ${f.type==='date'?'selected':''}>Дата</option>
-          <option value="select" ${f.type==='select'?'selected':''}>Список</option>
-          <option value="textarea" ${f.type==='textarea'?'selected':''}>Текст. область</option>
+          <option value="text" ${f.type === 'text' ? 'selected' : ''}>Текст</option>
+          <option value="number" ${f.type === 'number' ? 'selected' : ''}>Число</option>
+          <option value="date" ${f.type === 'date' ? 'selected' : ''}>Дата</option>
+          <option value="select" ${f.type === 'select' ? 'selected' : ''}>Список</option>
+          <option value="textarea" ${f.type === 'textarea' ? 'selected' : ''}>Текст. область</option>
         </select></td>
-        <td style="text-align:center;"><input type="checkbox" ${f.required?'checked':''} onchange="_cachedFields[${i}].required=this.checked"></td>
-        <td style="text-align:center;"><input type="checkbox" ${f.enabled?'checked':''} onchange="_cachedFields[${i}].enabled=this.checked"></td>
-        <td>${f.type === 'select' 
-          ? `<textarea rows="2" onchange="_cachedFields[${i}].options=this.value.split('\\n').map(s=>s.trim()).filter(Boolean)">${esc((f.options||[]).join('\n'))}</textarea>`
+        <td style="text-align:center;"><input type="checkbox" ${f.required ? 'checked' : ''} onchange="_cachedFields[${i}].required=this.checked"></td>
+        <td style="text-align:center;"><input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="_cachedFields[${i}].enabled=this.checked"></td>
+        <td>${f.type === 'select'
+          ? `<textarea rows="2" onchange="_cachedFields[${i}].options=this.value.split('\\n').map(s=>s.trim()).filter(Boolean)">${esc((f.options || []).join('\n'))}</textarea>`
           : '—'}</td>
         <td><button class="btn btn-danger btn-sm" onclick="deleteFieldSetting(${i})">🗑️</button></td>
       </tr>`;
@@ -1463,7 +1639,7 @@ function moveFieldSetting(idx, dir) {
   if (to < 0 || to >= _cachedFields.length) return;
   [_cachedFields[idx], _cachedFields[to]] = [_cachedFields[to], _cachedFields[idx]];
   _cachedFields.forEach((f, i) => f.order = i + 1);
-  renderFieldsSettings();
+  renderFieldsSettings(true);
 }
 
 function addFieldSetting() {
@@ -1471,14 +1647,14 @@ function addFieldSetting() {
   if (!id || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(id)) { showToast('Некорректный ID', 'error'); return; }
   if (_cachedFields.some(f => f.id === id)) { showToast('Поле с таким ID уже существует', 'error'); return; }
   _cachedFields.push({ id, label: id, type: 'text', required: false, enabled: true, options: [], default: '', order: _cachedFields.length + 1 });
-  renderFieldsSettings();
+  renderFieldsSettings(true);
 }
 
 function deleteFieldSetting(idx) {
   if (!confirm(`Удалить поле «${_cachedFields[idx].label}»?`)) return;
   _cachedFields.splice(idx, 1);
   _cachedFields.forEach((f, i) => f.order = i + 1);
-  renderFieldsSettings();
+  renderFieldsSettings(true);
 }
 
 async function saveFieldsSettings() {
@@ -1494,14 +1670,17 @@ async function saveFieldsSettings() {
 // ============================================================
 // ВКЛАДКА: ОТДЕЛЫ
 // ============================================================
-async function renderDepartmentsSettings() {
+async function renderDepartmentsSettings(skipFetch = false) {
   const c = document.getElementById('settings-content');
   try {
-    _cachedDepartmentsFull = await apiRequest('/settings/departments-full');
+    if (!skipFetch) {
+      _cachedDepartmentsFull = await apiRequest('/settings/departments-full');
+    }
+
     let html = `
       <h3>Управление отделами</h3>
       <p style="color:#64748b;margin-bottom:12px;">
-        Отделы <strong>не удаляются</strong> — их можно только <strong>отключать</strong>.
+        Отделы <strong>не могут дублироваться</strong>. При совпадении имён — они объединяются.
       </p>
       <table class="field-settings-table">
         <thead><tr>
@@ -1517,7 +1696,7 @@ async function renderDepartmentsSettings() {
                  onchange="_cachedDepartmentsFull[${i}].enabled=this.checked">
         </td>
         <td><input type="text" value="${esc(d.name)}" 
-                   onchange="_cachedDepartmentsFull[${i}].name=this.value"></td>
+                   onchange="onDepartmentNameChange(${i}, this.value)"></td>
         <td><button class="btn btn-danger btn-sm btn-icon-only" 
                     onclick="deleteDepartmentItem(${i})" title="Удалить">
           <i class="fa-solid fa-trash"></i>
@@ -1528,13 +1707,16 @@ async function renderDepartmentsSettings() {
       <div style="margin-top:16px;display:flex;gap:10px;">
         <input type="text" id="new-dept-name" 
                placeholder="Название нового отдела" 
-               style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;">
-        <button class="btn btn-success" onclick="addDepartmentItem()">
+               style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addDepartmentItem();}">
+        <button type="button" class="btn btn-success" onclick="addDepartmentItem()">
           <i class="fa-solid fa-plus"></i> Добавить
         </button>
-        <button class="btn btn-primary" onclick="saveDepartmentsFull()">
+        <button type="button" class="btn btn-primary" onclick="saveDepartmentsFull()">
           <i class="fa-solid fa-floppy-disk"></i> Сохранить
         </button>
+      </div>
+      <div id="dept-duplicate-warning" style="margin-top:12px;display:none;padding:10px 12px;background:#fee2e2;border-left:3px solid #dc2626;border-radius:6px;color:#991b1b;font-size:.85rem;">
       </div>`;
     c.innerHTML = html;
   } catch (e) {
@@ -1542,36 +1724,102 @@ async function renderDepartmentsSettings() {
   }
 }
 
+function onDepartmentNameChange(idx, value) {
+  const trimmed = value.trim();
+  _cachedDepartmentsFull[idx].name = trimmed;
+
+  // Проверяем дубли
+  const lower = trimmed.toLowerCase();
+  const duplicates = _cachedDepartmentsFull.filter((d, i) => i !== idx && d.name.trim().toLowerCase() === lower);
+
+  const warn = document.getElementById('dept-duplicate-warning');
+  if (warn) {
+    if (duplicates.length > 0 && trimmed !== '') {
+      warn.style.display = 'block';
+      warn.innerHTML = `⚠️ Отдел «${esc(trimmed)}» уже существует. При сохранении дубликат будет автоматически удалён.`;
+    } else {
+      warn.style.display = 'none';
+    }
+  }
+}
+
 function addDepartmentItem() {
-  const name = document.getElementById('new-dept-name').value.trim();
+  const input = document.getElementById('new-dept-name');
+  const name = (input ? input.value : '').trim();
+
   if (!name) { showToast('Введите название', 'error'); return; }
-  if (_cachedDepartmentsFull.some(d => d.name === name)) { showToast('Уже есть', 'error'); return; }
+
+  if (_cachedDepartmentsFull.some(d => d.name.toLowerCase() === name.toLowerCase())) {
+    showToast('Такой отдел уже есть', 'error');
+    return;
+  }
+
   _cachedDepartmentsFull.push({ name, enabled: true });
-  renderDepartmentsSettings();
+  renderDepartmentsSettings(true);
+
+  setTimeout(() => {
+    const inp = document.getElementById('new-dept-name');
+    if (inp) inp.focus();
+  }, 0);
+
+  showToast(`Отдел «${name}» добавлен — не забудьте нажать «Сохранить»`, 'success');
 }
 
 function deleteDepartmentItem(idx) {
-  if (!confirm(`Удалить «${_cachedDepartmentsFull[idx].name}»?`)) return;
+  if (idx < 0 || idx >= _cachedDepartmentsFull.length) return;
+  const name = _cachedDepartmentsFull[idx].name;
+  if (!confirm(`Удалить «${name}»?`)) return;
   _cachedDepartmentsFull.splice(idx, 1);
-  renderDepartmentsSettings();
+  renderDepartmentsSettings(true);
+  showToast(`Отдел «${name}» удалён — не забудьте нажать «Сохранить»`, 'success');
 }
 
 async function saveDepartmentsFull() {
+  // Чистим и дедуплицируем
+  const cleaned = [];
+  const seen = new Set();
+
+  for (const d of _cachedDepartmentsFull) {
+    const name = (d.name || '').trim();
+    if (!name) continue;
+
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    cleaned.push({ name, enabled: d.enabled !== false });
+  }
+
+  if (cleaned.length === 0) {
+    showToast('Добавьте хотя бы один отдел', 'error');
+    return;
+  }
+
+  if (cleaned.length !== _cachedDepartmentsFull.length) {
+    showToast(`Удалены дубликаты: было ${_cachedDepartmentsFull.length}, стало ${cleaned.length}`, 'success');
+  }
+
   try {
-    await apiRequest('/settings/departments', 'PUT', _cachedDepartmentsFull);
-    showToast('Отделы сохранены', 'success');
+    await apiRequest('/settings/departments', 'PUT', cleaned);
+    _cachedDepartmentsFull = cleaned;
+    showToast(`Отделы сохранены (${cleaned.length})`, 'success');
     await loadDepartments();
     _filterRendered = false;
+    render();
     closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
+
 // ============================================================
 // ВКЛАДКА: ПОДРАЗДЕЛЕНИЯ
 // ============================================================
-async function renderSubdivisionsSettings() {
+async function renderSubdivisionsSettings(skipFetch = false) {
   const c = document.getElementById('settings-content');
   try {
-    _cachedSubdivisions = await apiRequest('/settings/subdivisions/all');
+    if (!skipFetch) {
+      _cachedSubdivisions = await apiRequest('/settings/subdivisions/all');
+    }
+
     let html = `
       <h3>Управление подразделениями</h3>
       <p style="color:#64748b;margin-bottom:12px;">
@@ -1602,11 +1850,12 @@ async function renderSubdivisionsSettings() {
       <div style="margin-top:16px;display:flex;gap:10px;">
         <input type="text" id="new-subdivision-name"
                placeholder="Название нового подразделения"
-               style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;">
-        <button class="btn btn-success" onclick="addSubdivision()">
+               style="flex:1;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addSubdivision();}">
+        <button type="button" class="btn btn-success" onclick="addSubdivision()">
           <i class="fa-solid fa-plus"></i> Добавить
         </button>
-        <button class="btn btn-primary" onclick="saveSubdivisions()">
+        <button type="button" class="btn btn-primary" onclick="saveSubdivisions()">
           <i class="fa-solid fa-floppy-disk"></i> Сохранить
         </button>
       </div>`;
@@ -1617,46 +1866,80 @@ async function renderSubdivisionsSettings() {
 }
 
 function addSubdivision() {
-  const name = document.getElementById('new-subdivision-name').value.trim();
+  const input = document.getElementById('new-subdivision-name');
+  const name = (input ? input.value : '').trim();
   if (!name) { showToast('Введите название', 'error'); return; }
-  if (_cachedSubdivisions.some(s => s.name === name)) { showToast('Уже есть', 'error'); return; }
+  if (_cachedSubdivisions.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+    showToast('Такое подразделение уже есть', 'error');
+    return;
+  }
   _cachedSubdivisions.push({ name, enabled: true });
-  renderSubdivisionsSettings();
+  renderSubdivisionsSettings(true);
+  setTimeout(() => {
+    const inp = document.getElementById('new-subdivision-name');
+    if (inp) inp.focus();
+  }, 0);
+  showToast(`Подразделение «${name}» добавлено — не забудьте «Сохранить»`, 'success');
 }
 
 function deleteSubdivision(idx) {
   if (!confirm(`Удалить «${_cachedSubdivisions[idx].name}»?`)) return;
   _cachedSubdivisions.splice(idx, 1);
-  renderSubdivisionsSettings();
+  renderSubdivisionsSettings(true);
+  showToast('Подразделение удалено — не забудьте «Сохранить»', 'success');
 }
 
 async function saveSubdivisions() {
+  const cleaned = [];
+  const seen = new Set();
+  for (const s of _cachedSubdivisions) {
+    const name = (s.name || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push({ name, enabled: s.enabled !== false });
+  }
+
+  if (cleaned.length === 0) {
+    showToast('Добавьте хотя бы одно подразделение', 'error');
+    return;
+  }
+
   try {
-    await apiRequest('/settings/subdivisions', 'PUT', _cachedSubdivisions);
+    await apiRequest('/settings/subdivisions', 'PUT', cleaned);
+    _cachedSubdivisions = cleaned;
     showToast('Подразделения сохранены', 'success');
     await loadSubdivisions();
     _filterRendered = false;
     closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
-async function renderFiltersSettings() {
+
+// ============================================================
+// ВКЛАДКА: ФИЛЬТРЫ
+// ============================================================
+async function renderFiltersSettings(skipFetch = false) {
   const c = document.getElementById('settings-content');
   try {
-    _cachedFilters = await apiRequest('/settings/filters');
+    if (!skipFetch) {
+      _cachedFilters = await apiRequest('/settings/filters');
+    }
+
     let html = `
       <h3>Управление фильтрами</h3>
       <p style="color:#64748b;margin-bottom:12px;">
         Включайте / отключайте фильтры и добавляйте новые.
       </p>
       <table class="field-settings-table">
-     <thead><tr>
-        <th style="width:60px;">Порядок</th>
-        <th style="width:60px;">Активно</th>
-        <th>Название</th>
-        <th style="width:130px;">Тип</th>
-        <th style="width:140px;">Источник</th>
-         <th style="width:60px;"></th>
-     </tr></thead><tbody>`;
+        <thead><tr>
+          <th style="width:60px;">Порядок</th>
+          <th style="width:60px;">Активно</th>
+          <th>Название</th>
+          <th style="width:130px;">Тип</th>
+          <th style="width:140px;">Источник</th>
+          <th style="width:60px;"></th>
+        </tr></thead><tbody>`;
 
     _cachedFilters.forEach((f, i) => {
       html += `<tr>
@@ -1670,22 +1953,22 @@ async function renderFiltersSettings() {
           <input type="checkbox" ${f.enabled ? 'checked' : ''} 
                  onchange="_cachedFilters[${i}].enabled=this.checked">
         </td>
-           <td><input type="text" value="${esc(f.label)}" 
-           onchange="_cachedFilters[${i}].label=this.value"></td>
+        <td><input type="text" value="${esc(f.label)}" 
+                   onchange="_cachedFilters[${i}].label=this.value"></td>
         <td>
           <select onchange="_cachedFilters[${i}].type=this.value">
-            <option value="text" ${f.type==='text'?'selected':''}>Текст</option>
-            <option value="select" ${f.type==='select'?'selected':''}>Список</option>
-            <option value="date-period" ${f.type==='date-period'?'selected':''}>Период дат</option>
+            <option value="text" ${f.type === 'text' ? 'selected' : ''}>Текст</option>
+            <option value="select" ${f.type === 'select' ? 'selected' : ''}>Список</option>
+            <option value="date-period" ${f.type === 'date-period' ? 'selected' : ''}>Период дат</option>
           </select>
         </td>
         <td>
           <select onchange="_cachedFilters[${i}].optionsSource=this.value">
-            <option value="" ${!f.optionsSource?'selected':''}>—</option>
-            <option value="subdivisions" ${f.optionsSource==='subdivisions'?'selected':''}>Подразделения</option>
-            <option value="departments" ${f.optionsSource==='departments'?'selected':''}>Отделы</option>
-            <option value="status_list" ${f.optionsSource==='status_list'?'selected':''}>Статусы</option>
-            <option value="active_list" ${f.optionsSource==='active_list'?'selected':''}>Активность</option>
+            <option value="" ${!f.optionsSource ? 'selected' : ''}>—</option>
+            <option value="subdivisions" ${f.optionsSource === 'subdivisions' ? 'selected' : ''}>Подразделения</option>
+            <option value="departments" ${f.optionsSource === 'departments' ? 'selected' : ''}>Отделы</option>
+            <option value="status_list" ${f.optionsSource === 'status_list' ? 'selected' : ''}>Статусы</option>
+            <option value="active_list" ${f.optionsSource === 'active_list' ? 'selected' : ''}>Активность</option>
           </select>
         </td>
         <td><button class="btn btn-danger btn-sm btn-icon-only" 
@@ -1712,8 +1995,9 @@ function moveFilter(idx, dir) {
   if (to < 0 || to >= _cachedFilters.length) return;
   [_cachedFilters[idx], _cachedFilters[to]] = [_cachedFilters[to], _cachedFilters[idx]];
   _cachedFilters.forEach((f, i) => f.order = i + 1);
-  renderFiltersSettings();
+  renderFiltersSettings(true);
 }
+
 function addFilter() {
   const id = prompt('ID нового фильтра (латиницей):');
   if (!id || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(id)) { showToast('Некорректный ID', 'error'); return; }
@@ -1727,14 +2011,14 @@ function addFilter() {
     optionsSource: '',
     order: _cachedFilters.length + 1
   });
-  renderFiltersSettings();
+  renderFiltersSettings(true);
 }
 
 function deleteFilter(idx) {
   if (!confirm(`Удалить фильтр «${_cachedFilters[idx].label}»?`)) return;
   _cachedFilters.splice(idx, 1);
   _cachedFilters.forEach((f, i) => f.order = i + 1);
-  renderFiltersSettings();
+  renderFiltersSettings(true);
 }
 
 async function saveFilters() {
@@ -1768,7 +2052,6 @@ const EXPORT_FIELDS = [
   { id: 'notes', label: 'Примечание' }
 ];
 
-
 async function renderExportSettings() {
   const c = document.getElementById('settings-content');
   try {
@@ -1790,6 +2073,7 @@ async function saveExportSettings() {
   const selected = Array.from(document.querySelectorAll('.exp-field-cb:checked')).map(cb => cb.value);
   try {
     await apiRequest('/settings/export', 'PUT', selected);
+    exportFields = selected;
     showToast('Настройки экспорта сохранены', 'success');
     closeSettingsModal();
   } catch (e) {
@@ -1848,39 +2132,27 @@ async function renderUsersSettings() {
             </select>
           </div>
         </div>
-            <!-- Блок прав доступа -->
-    <div class="form-group">
-      <label>Права доступа (влияют на видимость кнопок)</label>
-      <div class="permissions-group" id="usr-permissions">
-        <label>
-          <input type="checkbox" value="manage_pipettes">
-          ➕ Управление пипетками
-        </label>
-        <label>
-          <input type="checkbox" value="import_data">
-          📥 Импорт данных
-        </label>
-        <label>
-          <input type="checkbox" value="export_data">
-          📤 Экспорт данных
-        </label>
-      </div>
-      <small style="color:#64748b;display:block;margin-top:8px;">
-        Для администратора все права включены автоматически.
-      </small>
-    </div>
-    <!-- Ограничение по отделу -->
-    <div class="form-group" style="background:#fef9c3;padding:12px;border-radius:8px;border-left:3px solid #eab308;">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#854d0e;">
-        <input type="checkbox" id="usr-only-own-dept" style="width:18px;height:18px;cursor:pointer;">
-        <i class="fa-solid fa-eye-slash"></i>
-        Показывать только свой отдел
-      </label>
-      <small style="color:#92400e;display:block;margin-top:6px;margin-left:26px;">
-        Если включено — пользователь увидит <strong>только пипетки своего отдела</strong>.<br>
-        Если выключено (по умолчанию) — увидит <strong>все пипетки</strong>.
-      </small>
-    </div>
+        <div class="form-group">
+          <label>Права доступа (влияют на видимость кнопок)</label>
+          <div class="permissions-group" id="usr-permissions">
+            <label><input type="checkbox" value="manage_pipettes"> ➕ Управление пипетками</label>
+            <label><input type="checkbox" value="import_data"> 📥 Импорт данных</label>
+            <label><input type="checkbox" value="export_data"> 📤 Экспорт данных</label>
+          </div>
+          <small style="color:#64748b;display:block;margin-top:8px;">
+            Для администратора все права включены автоматически.
+          </small>
+        </div>
+        <div class="form-group" style="background:#fef9c3;padding:12px;border-radius:8px;border-left:3px solid #eab308;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#854d0e;">
+            <input type="checkbox" id="usr-only-own-dept" style="width:18px;height:18px;cursor:pointer;">
+            <i class="fa-solid fa-eye-slash"></i>
+            Показывать только свой отдел
+          </label>
+          <small style="color:#92400e;display:block;margin-top:6px;margin-left:26px;">
+            Если включено — пользователь увидит <strong>только пипетки своего отдела</strong>.
+          </small>
+        </div>
         <div class="form-actions" style="justify-content:flex-start;">
           <button class="btn btn-success" onclick="saveUserSetting()">💾 Сохранить</button>
           <button class="btn btn-secondary" onclick="resetUserSettingForm()">Отмена</button>
@@ -1891,28 +2163,29 @@ async function renderUsersSettings() {
     c.innerHTML = '<p style="color:#dc2626;">Ошибка: ' + e.message + '</p>';
   }
 }
+
 function onUserRoleChange(role) {
   const checkboxes = document.querySelectorAll('#usr-permissions input[type="checkbox"]');
   checkboxes.forEach(cb => {
     if (role === 'admin') {
       cb.checked = true;
       cb.disabled = true;
-    
     } else {
       cb.disabled = false;
       cb.checked = false;
     }
   });
 }
+
 function resetUserSettingForm() {
-  ['usr-edit-id','usr-login','usr-password','usr-fullname','usr-position','usr-department'].forEach(id => {
-    document.getElementById(id).value = '';
+  ['usr-edit-id', 'usr-login', 'usr-password', 'usr-fullname', 'usr-position', 'usr-department'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
   document.getElementById('usr-role').value = 'user';
   document.getElementById('user-form-title').textContent = '➕ Добавить пользователя';
   const onlyOwnCb = document.getElementById('usr-only-own-dept');
   if (onlyOwnCb) onlyOwnCb.checked = false;
-  // Сброс чекбоксов
   document.querySelectorAll('#usr-permissions input[type="checkbox"]').forEach(cb => {
     cb.checked = false;
     cb.disabled = false;
@@ -1934,12 +2207,10 @@ async function editUserSetting(id) {
     document.getElementById('usr-role').value = u.role;
     document.getElementById('user-form-title').textContent = '✏️ Редактирование: ' + u.login;
 
-    // ▼▼▼ ГАЛОЧКА «ТОЛЬКО СВОЙ ОТДЕЛ» ▼▼▼
     const onlyOwnCb = document.getElementById('usr-only-own-dept');
     if (onlyOwnCb) onlyOwnCb.checked = !!u.onlyOwnDepartment;
-    
-    // ▼▼▼ ЗАПОЛНЯЕМ ЧЕКБОКСЫ ПРАВ ▼▼▼
-        const extra = u.extraPermissions || [];
+
+    const extra = u.extraPermissions || [];
 
     document.querySelectorAll('#usr-permissions input[type="checkbox"]').forEach(cb => {
       if (u.role === 'admin') {
@@ -2005,6 +2276,7 @@ async function saveUserSetting() {
     closeSettingsModal();
   } catch (e) { showToast(e.message, 'error'); }
 }
+
 async function deleteUserSetting(id) {
   if (!confirm('Удалить пользователя?')) return;
   try {
@@ -2093,20 +2365,79 @@ async function renderBackupSettings() {
   const c = document.getElementById('settings-content');
   try {
     const backups = await apiRequest('/backup');
+
+    let autoSettings = { enabled: false, hour: 2, keep: 30 };
+    try {
+      autoSettings = await apiRequest('/backup/auto-settings');
+    } catch (e) {}
+
     let html = `<h3>Резервные копии</h3>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;">
         <button class="btn btn-warning" onclick="createBackupSetting()">💾 Создать бэкап</button>
         <button class="btn btn-secondary" onclick="openBackupList()">🔄 Восстановить</button>
         <button class="btn btn-danger" onclick="resetAllDataSetting()">🗑️ Сбросить данные</button>
+      </div>`;
+
+    html += `
+      <div class="settings-form" style="margin-top:20px;border:2px solid #e0f2fe;background:#f0f9ff;">
+        <h4 style="margin-bottom:12px;color:#0369a1;">⏰ Автобэкап по расписанию</h4>
+        <p style="color:#64748b;font-size:.85rem;margin-bottom:12px;">
+          Сервер автоматически создаёт резервную копию БД каждый день в указанное время.
+        </p>
+        <div class="form-row">
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+              <input type="checkbox" id="auto-backup-enabled" 
+                     ${autoSettings.enabled ? 'checked' : ''} 
+                     style="width:18px;height:18px;cursor:pointer;accent-color:#0ea5e9;">
+              Включить автобэкап
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Время (час дня, 0–23)</label>
+            <input type="number" id="auto-backup-hour" min="0" max="23"
+                   value="${autoSettings.hour}" 
+                   style="max-width:120px;">
+            <small style="color:#64748b;">например, 2 — в 2 часа ночи</small>
+          </div>
+          <div class="form-group">
+            <label>Хранить копий</label>
+            <input type="number" id="auto-backup-keep" min="3" max="365"
+                   value="${autoSettings.keep}"
+                   style="max-width:120px;">
+            <small style="color:#64748b;">старые удаляются автоматически</small>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+          <button class="btn btn-success" onclick="saveAutoBackupSettings()">
+            💾 Сохранить настройки автобэкапа
+          </button>
+          <button class="btn btn-info" onclick="runAutoBackupNow()">
+            ▶️ Создать сейчас
+          </button>
+        </div>
+        <div id="auto-backup-status" style="margin-top:12px;font-size:.85rem;color:#0369a1;"></div>
       </div>
-      <h4 style="margin-top:20px;">Доступные бэкапы (${backups.length})</h4>
-      <div>`;
+    `;
+
+    html += `<h4 style="margin-top:25px;">Доступные бэкапы (${backups.length})</h4>
+      <div style="max-height:400px;overflow-y:auto;">`;
+
     if (!backups.length) {
       html += '<p style="color:#94a3b8;">Нет бэкапов</p>';
     } else {
       backups.forEach(b => {
+        const isAuto = b.name.includes('_auto_');
+        const badge = isAuto
+          ? '<span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:6px;font-size:.7rem;margin-left:6px;">авто</span>'
+          : '';
         html += `<div class="dept-item">
-          <span class="dept-name">📁 ${esc(b.name)} (${(b.size/1024).toFixed(1)} KB)</span>
+          <span class="dept-name">
+            📁 ${esc(b.name)}${badge} 
+            <small style="color:#94a3b8;">(${(b.size / 1024).toFixed(1)} KB · ${new Date(b.created).toLocaleString('ru-RU')})</small>
+          </span>
           <div class="dept-actions">
             <a class="btn btn-secondary btn-sm" href="/api/backup/download/${esc(b.name)}" download>⬇️</a>
             <button class="btn btn-danger btn-sm" onclick="deleteBackupSetting('${esc(b.name)}')">🗑️</button>
@@ -2115,9 +2446,55 @@ async function renderBackupSettings() {
       });
     }
     html += `</div>`;
+
     c.innerHTML = html;
+    updateAutoBackupStatus(autoSettings);
   } catch (e) {
     c.innerHTML = '<p style="color:#dc2626;">Ошибка: ' + e.message + '</p>';
+  }
+}
+
+function updateAutoBackupStatus(s) {
+  const el = document.getElementById('auto-backup-status');
+  if (!el) return;
+  if (s.enabled) {
+    el.innerHTML = `✅ Автобэкап <strong>включён</strong>: каждый день в <strong>${s.hour}:00</strong>, хранится последних <strong>${s.keep}</strong> копий.`;
+  } else {
+    el.innerHTML = `⚠️ Автобэкап <strong>выключен</strong>. Бэкапы создаются только вручную.`;
+  }
+}
+
+async function saveAutoBackupSettings() {
+  const enabled = document.getElementById('auto-backup-enabled').checked;
+  const hour = parseInt(document.getElementById('auto-backup-hour').value, 10);
+  const keep = parseInt(document.getElementById('auto-backup-keep').value, 10);
+
+  if (isNaN(hour) || hour < 0 || hour > 23) {
+    showToast('Час должен быть от 0 до 23', 'error');
+    return;
+  }
+  if (isNaN(keep) || keep < 3 || keep > 365) {
+    showToast('Количество копий: от 3 до 365', 'error');
+    return;
+  }
+
+  try {
+    await apiRequest('/backup/auto-settings', 'PUT', { enabled, hour, keep });
+    showToast('Настройки автобэкапа сохранены', 'success');
+    updateAutoBackupStatus({ enabled, hour, keep });
+  } catch (e) {
+    showToast(e.message || 'Ошибка сохранения', 'error');
+  }
+}
+
+async function runAutoBackupNow() {
+  if (!confirm('Создать бэкап прямо сейчас?')) return;
+  try {
+    await apiRequest('/backup/auto-now', 'POST', {});
+    showToast('Бэкап создан', 'success');
+    await renderBackupSettings();
+  } catch (e) {
+    showToast(e.message || 'Ошибка бэкапа', 'error');
   }
 }
 
@@ -2153,7 +2530,7 @@ async function openBackupList() {
     c.innerHTML = '<p style="color:#64748b;">Выберите бэкап для восстановления:</p>';
     backups.forEach(b => {
       c.innerHTML += `<div class="dept-item">
-        <span class="dept-name">📁 ${esc(b.name)} (${(b.size/1024).toFixed(1)} KB)</span>
+        <span class="dept-name">📁 ${esc(b.name)} (${(b.size / 1024).toFixed(1)} KB)</span>
         <button class="btn btn-success btn-sm" onclick="doRestoreSetting('${esc(b.name)}')">Восстановить</button>
       </div>`;
     });
@@ -2164,7 +2541,7 @@ async function openBackupList() {
 async function doRestoreSetting(name) {
   if (!confirm('Восстановить из этого бэкапа? Текущие данные будут потеряны.')) return;
   try {
-    const r = await apiRequest('/backup/restore/' + encodeURIComponent(name), 'POST', {});
+    await apiRequest('/backup/restore/' + encodeURIComponent(name), 'POST', {});
     showToast('Бэкап восстановлен. Перезапустите приложение.', 'success');
     closeBackupModal();
   } catch (e) { showToast(e.message, 'error'); }
@@ -2176,6 +2553,367 @@ function closeBackupModal() {
 document.getElementById('backup-modal').addEventListener('click', e => {
   if (e.target.id === 'backup-modal') closeBackupModal();
 });
+
+// ============================================================
+// МАССОВАЯ ОТПРАВКА НА ПОВЕРКУ
+// ============================================================
+function openBulkSendModal() {
+  if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const selected = [...selectedPipettes].filter(id => visibleIds.includes(id));
+  const toSend = selected.filter(id => {
+    const p = pipettes.find(x => x.id === id);
+    return p && !p.sent_for_calibration;
+  });
+
+  if (toSend.length === 0) {
+    showToast('Не выбрано ни одной пипетки для отправки', 'error');
+    return;
+  }
+
+  document.getElementById('bulk-send-count').textContent = toSend.length;
+
+  const listHtml = toSend.map(id => {
+    const p = pipettes.find(x => x.id === id);
+    if (!p) return '';
+    return `<div style="padding:2px 0;">
+      <strong>${esc(p.id)}</strong> — ${esc(p.model)} 
+      <span style="color:#94a3b8;">(${esc(p.department || 'без отдела')})</span>
+    </div>`;
+  }).join('');
+  document.getElementById('bulk-send-list').innerHTML = listHtml;
+
+  document.getElementById('bulk-send-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('bulk-send-note').value = '';
+
+  document.getElementById('bulk-send-modal').classList.add('active');
+}
+
+function closeBulkSendModal() {
+  document.getElementById('bulk-send-modal').classList.remove('active');
+}
+
+async function saveBulkSend(e) {
+  e.preventDefault();
+  if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const selected = [...selectedPipettes].filter(id => visibleIds.includes(id));
+  const toSend = selected.filter(id => {
+    const p = pipettes.find(x => x.id === id);
+    return p && !p.sent_for_calibration;
+  });
+
+  if (toSend.length === 0) {
+    showToast('Не выбрано ни одной пипетки', 'error');
+    return;
+  }
+
+  const sentDate = document.getElementById('bulk-send-date').value;
+  const note = document.getElementById('bulk-send-note').value.trim();
+
+  if (!sentDate) { showToast('Укажите дату отправки', 'error'); return; }
+  if (sentDate > new Date().toISOString().slice(0, 10)) {
+    showToast('Дата не может быть в будущем', 'error');
+    return;
+  }
+
+  if (toSend.length > 5) {
+    if (!confirm(`Отправить на поверку ${toSend.length} пипеток?`)) return;
+  }
+
+  try {
+    const res = await apiRequest('/pipettes/bulk-send', 'POST', {
+      ids: toSend, sentDate, note
+    });
+
+    let msg = `Отправлено на поверку: ${res.successful}`;
+    if (res.skipped > 0) msg += `. Пропущено: ${res.skipped}`;
+    showToast(msg, res.successful > 0 ? 'success' : 'error');
+
+    clearSelection();
+    closeBulkSendModal();
+    await loadPipetteData();
+  } catch (error) {
+    showToast(error.message || 'Ошибка отправки', 'error');
+  }
+}
+
+// ============================================================
+// ПЕЧАТЬ АКТА ОТПРАВКИ
+// ============================================================
+function printSendAct() {
+  if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const selected = [...selectedPipettes].filter(id => visibleIds.includes(id));
+  const sendItems = selected.filter(id => {
+    const p = pipettes.find(x => x.id === id);
+    return p && !p.sent_for_calibration;
+  });
+
+  if (sendItems.length === 0) {
+    showToast('Нет пипеток для печати', 'error');
+    return;
+  }
+
+  const sentDate = document.getElementById('bulk-send-date').value
+    || new Date().toISOString().slice(0, 10);
+  const note = (document.getElementById('bulk-send-note').value || '').trim();
+  const today = new Date().toLocaleDateString('ru-RU');
+  const user = currentUser ? currentUser.fullName : '';
+
+  const rows = sendItems.map((id, index) => {
+    const p = pipettes.find(x => x.id === id);
+    if (!p) return '';
+    return `
+      <tr>
+        <td style="text-align:center;">${index + 1}</td>
+        <td><strong>${esc(p.id)}</strong></td>
+        <td>${esc(p.model)}${p.manufacturer ? '<br><small>' + esc(p.manufacturer) + '</small>' : ''}</td>
+        <td>${esc(p.serial || '—')}</td>
+        <td>${p.volume ? esc(p.volume) + ' мкл' : '—'}</td>
+        <td>${esc(p.department || '—')}</td>
+        <td>${esc(p.responsible || '—')}</td>
+        <td style="width:50px;"></td>
+      </tr>
+    `;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+      <meta charset="UTF-8">
+      <title>Акт отправки на поверку — ${today}</title>
+      <style>
+        @page { size: A4 portrait; margin: 15mm 12mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #1a1a2e; line-height: 1.5; }
+        h1 { font-size: 15pt; margin: 0 0 6px; text-align: center; }
+        .subtitle { font-size: 10pt; text-align: center; color: #64748b; margin-bottom: 20px; }
+        .meta { margin-bottom: 15px; padding: 10px 12px; background: #f8fafc; border-radius: 6px; font-size: 9.5pt; }
+        .meta div { margin-bottom: 3px; }
+        .meta b { color: #1e293b; }
+        table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 10px; }
+        th { background: #1e293b; color: #fff; padding: 8px 6px; text-align: left; font-size: 8.5pt;
+             text-transform: uppercase; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        td { padding: 8px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+        tr:nth-child(even) td { background: #f8fafc; }
+        small { color: #94a3b8; font-size: 8pt; }
+        .note-block { margin-top: 20px; padding: 10px 12px; background: #fef9c3;
+                      border-left: 3px solid #eab308; border-radius: 6px; font-size: 9.5pt; color: #854d0e; }
+        .signatures { margin-top: 40px; display: flex; justify-content: space-between; }
+        .sig-block { width: 45%; }
+        .sig-line { border-bottom: 1px solid #000; height: 30px; margin-bottom: 5px; }
+        .sig-label { font-size: 8.5pt; color: #64748b; text-align: center; }
+        .footer { margin-top: 30px; font-size: 8pt; color: #94a3b8; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <h1>АКТ ОТПРАВКИ НА ПОВЕРКУ</h1>
+      <div class="subtitle">КГБУЗ Краевая клиническая больница · Клинико-диагностическая лаборатория</div>
+
+      <div class="meta">
+        <div>Дата отправки: <b>${formatDate(sentDate)}</b></div>
+        <div>Количество приборов: <b>${sendItems.length}</b></div>
+        <div>Организация, производящая поверку: <b>ФБУ «Красноярский ЦСМ»</b></div>
+        <div>Сформировал: <b>${esc(user)}</b></div>
+        <div>Дата печати: <b>${today}</b></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:5%; text-align:center;">№</th>
+            <th style="width:11%;">Внутр. №</th>
+            <th style="width:22%;">Модель / Произв.</th>
+            <th style="width:13%;">Серийный №</th>
+            <th style="width:10%;">Объём</th>
+            <th style="width:15%;">Отдел</th>
+            <th style="width:14%;">Ответственный</th>
+            <th style="width:10%;">Прим.</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      ${note ? `<div class="note-block"><b>Примечание:</b> ${esc(note)}</div>` : ''}
+
+      <div class="signatures">
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div class="sig-label">Сдал (ФИО, подпись)</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div class="sig-label">Принял (ФИО, подпись)</div>
+        </div>
+      </div>
+
+      <div class="footer">Документ сформирован автоматически системой учёта пипеток</div>
+    </body>
+    </html>
+  `);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 300);
+  showToast('Окно печати открыто', 'success');
+}
+
+// ============================================================
+// МАССОВЫЙ ВОЗВРАТ С ПОВЕРКИ
+// ============================================================
+function openBulkReturnModal() {
+  if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const selected = [...selectedPipettes].filter(id => visibleIds.includes(id));
+
+  const sentItems = selected
+    .map(id => pipettes.find(x => x.id === id))
+    .filter(p => p && p.sent_for_calibration);
+
+  if (sentItems.length === 0) {
+    showToast('Не выбрано ни одной пипетки со статусом «На поверке»', 'error');
+    return;
+  }
+
+  document.getElementById('bulk-return-count').textContent = sentItems.length;
+
+  const container = document.getElementById('bulk-return-items-container');
+  container.innerHTML = `
+    <div style="font-weight:600;color:#475569;margin-bottom:8px;font-size:.85rem;">
+      Свидетельства по пипеткам:
+    </div>
+    <table class="field-settings-table">
+      <thead>
+        <tr>
+          <th style="width:35%;">ID / Модель</th>
+          <th style="width:40%;">Номер свидетельства</th>
+          <th style="width:25%;">Результат</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sentItems.map(p => `
+          <tr>
+            <td>
+              <strong>${esc(p.id)}</strong><br>
+              <small style="color:#94a3b8;">${esc(p.model)}</small><br>
+              <small style="color:#0ea5e9;">отправлена ${formatDate(p.sent_for_calibration)}</small>
+            </td>
+            <td>
+              <input type="text" class="bulk-return-cert-input" 
+                     data-id="${esc(p.id)}" 
+                     placeholder="напр. С-АБ-...">
+            </td>
+            <td>
+              <select class="bulk-return-result-input" data-id="${esc(p.id)}">
+                <option value="pass">✅ Годен</option>
+                <option value="fail">❌ Брак</option>
+                <option value="wip">⏳ В процессе</option>
+              </select>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  document.getElementById('bulk-return-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('bulk-return-org').value = '';
+  document.getElementById('bulk-return-result').value = 'pass';
+  document.getElementById('bulk-return-note').value = '';
+  document.getElementById('bulk-return-cert').value = '';
+  document.getElementById('bulk-return-single-cert').checked = false;
+  toggleSingleCert(false);
+
+  document.getElementById('bulk-return-modal').classList.add('active');
+}
+
+function closeBulkReturnModal() {
+  document.getElementById('bulk-return-modal').classList.remove('active');
+}
+
+function toggleSingleCert(checked) {
+  document.getElementById('bulk-return-common-cert').style.display = checked ? 'block' : 'none';
+
+  document.querySelectorAll('.bulk-return-cert-input').forEach(inp => {
+    inp.disabled = checked;
+    inp.style.opacity = checked ? '0.4' : '1';
+    if (checked) inp.value = '';
+  });
+}
+
+function applyBulkReturnResult(result) {
+  document.querySelectorAll('.bulk-return-result-input').forEach(sel => {
+    sel.value = result;
+  });
+}
+
+async function saveBulkReturn(e) {
+  e.preventDefault();
+  if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
+
+  const date = document.getElementById('bulk-return-date').value;
+  const org = document.getElementById('bulk-return-org').value.trim();
+  const commonResult = document.getElementById('bulk-return-result').value;
+  const note = document.getElementById('bulk-return-note').value.trim();
+  const singleCert = document.getElementById('bulk-return-single-cert').checked;
+  const commonCert = document.getElementById('bulk-return-cert').value.trim();
+
+  if (!date) { showToast('Укажите дату поверки', 'error'); return; }
+  if (date > new Date().toISOString().slice(0, 10)) {
+    showToast('Дата не может быть в будущем', 'error');
+    return;
+  }
+  if (singleCert && !commonCert) {
+    showToast('Укажите общий номер свидетельства', 'error');
+    return;
+  }
+
+  const visibleIds = getFilteredPipettes().map(p => p.id);
+  const selected = [...selectedPipettes].filter(id => visibleIds.includes(id));
+  const sentIds = selected.filter(id => {
+    const p = pipettes.find(x => x.id === id);
+    return p && p.sent_for_calibration;
+  });
+
+  const items = sentIds.map(id => {
+    const certInput = document.querySelector(`.bulk-return-cert-input[data-id="${id}"]`);
+    const resultInput = document.querySelector(`.bulk-return-result-input[data-id="${id}"]`);
+    return {
+      id,
+      cert: singleCert ? commonCert : (certInput ? certInput.value.trim() : ''),
+      result: resultInput ? resultInput.value : commonResult
+    };
+  });
+
+  if (!singleCert) {
+    const missingCert = items.filter(it => !it.cert);
+    if (missingCert.length > 0) {
+      if (!confirm(`У ${missingCert.length} пипеток не указано свидетельство. Продолжить?`)) return;
+    }
+  }
+
+  if (items.length > 5) {
+    if (!confirm(`Применить возврат для ${items.length} пипеток?`)) return;
+  }
+
+  try {
+    const res = await apiRequest('/pipettes/bulk-return', 'POST', {
+      items, date, org, note
+    });
+
+    showToast(res.message || `Возврат оформлен для ${items.length} пипеток`, 'success');
+    clearSelection();
+    closeBulkReturnModal();
+    await loadPipetteData();
+  } catch (error) {
+    showToast(error.message || 'Ошибка сохранения', 'error');
+  }
+}
 
 console.log('🔬 Система учёта пипеток запущена');
 console.log('👤 admin/admin, senior/senior, user/user');
