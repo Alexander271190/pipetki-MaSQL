@@ -2374,10 +2374,6 @@ async function renderBackupSettings() {
   try {
     const backups = await apiRequest('/backup');
 
-    let autoSettings = { enabled: false, hour: 2, keep: 30 };
-    try {
-      autoSettings = await apiRequest('/backup/auto-settings');
-    } catch (e) {}
 
     let html = `<h3>Резервные копии</h3>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;">
@@ -2386,50 +2382,7 @@ async function renderBackupSettings() {
         <button class="btn btn-danger" onclick="resetAllDataSetting()">🗑️ Сбросить данные</button>
       </div>`;
 
-    html += `
-      <div class="settings-form" style="margin-top:20px;border:2px solid #e0f2fe;background:#f0f9ff;">
-        <h4 style="margin-bottom:12px;color:#0369a1;">⏰ Автобэкап по расписанию</h4>
-        <p style="color:#64748b;font-size:.85rem;margin-bottom:12px;">
-          Сервер автоматически создаёт резервную копию БД каждый день в указанное время.
-        </p>
-        <div class="form-row">
-          <div class="form-group">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
-              <input type="checkbox" id="auto-backup-enabled" 
-                     ${autoSettings.enabled ? 'checked' : ''} 
-                     style="width:18px;height:18px;cursor:pointer;accent-color:#0ea5e9;">
-              Включить автобэкап
-            </label>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Время (час дня, 0–23)</label>
-            <input type="number" id="auto-backup-hour" min="0" max="23"
-                   value="${autoSettings.hour}" 
-                   style="max-width:120px;">
-            <small style="color:#64748b;">например, 2 — в 2 часа ночи</small>
-          </div>
-          <div class="form-group">
-            <label>Хранить копий</label>
-            <input type="number" id="auto-backup-keep" min="3" max="365"
-                   value="${autoSettings.keep}"
-                   style="max-width:120px;">
-            <small style="color:#64748b;">старые удаляются автоматически</small>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
-          <button class="btn btn-success" onclick="saveAutoBackupSettings()">
-            💾 Сохранить настройки автобэкапа
-          </button>
-          <button class="btn btn-info" onclick="runAutoBackupNow()">
-            ▶️ Создать сейчас
-          </button>
-        </div>
-        <div id="auto-backup-status" style="margin-top:12px;font-size:.85rem;color:#0369a1;"></div>
-      </div>
-    `;
-
+   
     html += `<h4 style="margin-top:25px;">Доступные бэкапы (${backups.length})</h4>
       <div style="max-height:400px;overflow-y:auto;">`;
 
@@ -2462,49 +2415,6 @@ async function renderBackupSettings() {
   }
 }
 
-function updateAutoBackupStatus(s) {
-  const el = document.getElementById('auto-backup-status');
-  if (!el) return;
-  if (s.enabled) {
-    el.innerHTML = `✅ Автобэкап <strong>включён</strong>: каждый день в <strong>${s.hour}:00</strong>, хранится последних <strong>${s.keep}</strong> копий.`;
-  } else {
-    el.innerHTML = `⚠️ Автобэкап <strong>выключен</strong>. Бэкапы создаются только вручную.`;
-  }
-}
-
-async function saveAutoBackupSettings() {
-  const enabled = document.getElementById('auto-backup-enabled').checked;
-  const hour = parseInt(document.getElementById('auto-backup-hour').value, 10);
-  const keep = parseInt(document.getElementById('auto-backup-keep').value, 10);
-
-  if (isNaN(hour) || hour < 0 || hour > 23) {
-    showToast('Час должен быть от 0 до 23', 'error');
-    return;
-  }
-  if (isNaN(keep) || keep < 3 || keep > 365) {
-    showToast('Количество копий: от 3 до 365', 'error');
-    return;
-  }
-
-  try {
-    await apiRequest('/backup/auto-settings', 'PUT', { enabled, hour, keep });
-    showToast('Настройки автобэкапа сохранены', 'success');
-    updateAutoBackupStatus({ enabled, hour, keep });
-  } catch (e) {
-    showToast(e.message || 'Ошибка сохранения', 'error');
-  }
-}
-
-async function runAutoBackupNow() {
-  if (!confirm('Создать бэкап прямо сейчас?')) return;
-  try {
-    await apiRequest('/backup/auto-now', 'POST', {});
-    showToast('Бэкап создан', 'success');
-    await renderBackupSettings();
-  } catch (e) {
-    showToast(e.message || 'Ошибка бэкапа', 'error');
-  }
-}
 
 async function createBackupSetting() {
   try {
