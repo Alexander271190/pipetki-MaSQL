@@ -1854,7 +1854,6 @@ async function renderFiltersSettings(skipFetch = false) {
             <option value="active_list" ${f.optionsSource === 'active_list' ? 'selected' : ''}>Активность</option>
           </select>
         </td>
-        </td>
         <td><button class="btn btn-danger btn-sm btn-icon-only" 
          onclick="deleteFilter(${i})" title="Удалить">
           <i class="fa-solid fa-trash"></i>
