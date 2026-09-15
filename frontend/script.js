@@ -875,12 +875,12 @@ async function openModal(id) {
     const p = pipettes.find(x => x.id === id);
     if (!p) { showToast('Пипетка не найдена', 'error'); return; }
 
-    title.textContent = '✏️ Редактировать пипетку';
+    title.textContent = '✏️ Редактировать оборудование';
     document.getElementById('edit-id').value = p.id;
     modal.classList.add('active');
     await generateFormFields(p);
   } else {
-    title.textContent = '➕ Добавить пипетку';
+    title.textContent = '➕ Добавить оборудование';
     const defaultData = {
       lastCalibration: new Date().toISOString().slice(0, 10),
       interval: 12,
@@ -936,10 +936,10 @@ async function savePipette(e) {
   try {
     if (editId) {
       await apiRequest(`/pipettes/${editId}`, 'PUT', data);
-      showToast('Пипетка обновлена', 'success');
+      showToast('Оборудование обновлено', 'success');
     } else {
       await apiRequest('/pipettes', 'POST', data);
-      showToast('Пипетка добавлена', 'success');
+      showToast('Оборудование добавлено', 'success');
     }
     closeModal();
     await loadPipetteData();
@@ -950,10 +950,10 @@ async function savePipette(e) {
 
 async function deletePipette(id) {
   if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
-  if (!confirm(`Удалить пипетку ${id} со всей историей?`)) return;
+  if (!confirm(`Удалить ${id} со всей историей?`)) return;
   try {
     await apiRequest(`/pipettes/${id}`, 'DELETE');
-    showToast('Пипетка удалена', 'success');
+    showToast('Оборудование удалено', 'success');
     selectedPipettes.delete(id);
     await loadPipetteData();
   } catch (error) {
@@ -967,7 +967,7 @@ async function deletePipette(id) {
 function openQuickCalModal(id) {
   if (!canManagePipettes()) { showToast('Доступ запрещён', 'error'); return; }
   const p = pipettes.find(x => x.id === id);
-  if (!p) { showToast('Пипетка не найдена', 'error'); return; }
+  if (!p) { showToast('Оборудование не найдено', 'error'); return; }
   document.getElementById('quick-cal-id').value = id;
   document.getElementById('quick-cal-pipette-info').innerHTML = `<strong>${esc(p.id)}</strong> — ${esc(p.model)} (${esc(p.department || 'без отдела')})`;
   document.getElementById('quick-cal-date').value = new Date().toISOString().slice(0, 10);
@@ -2367,7 +2367,7 @@ function openBulkSendModal() {
   });
 
   if (toSend.length === 0) {
-    showToast('Не выбрано ни одной пипетки для отправки', 'error');
+    showToast('Не выбрано ни одной единицы для отправки', 'error');
     return;
   }
 
@@ -2419,7 +2419,7 @@ async function saveBulkSend(e) {
   }
 
   if (toSend.length > 5) {
-    if (!confirm(`Отправить на поверку ${toSend.length} пипеток?`)) return;
+    if (!confirm(`Отправить на поверку ${toSend.length} единиц?`)) return;
   }
 
   try {
@@ -2575,7 +2575,7 @@ function openBulkReturnModal() {
     .filter(p => p && p.sent_for_calibration);
 
   if (sentItems.length === 0) {
-    showToast('Не выбрано ни одной пипетки со статусом «На поверке»', 'error');
+    showToast('Не выбрано ни одной единицы со статусом «На поверке»', 'error');
     return;
   }
 
