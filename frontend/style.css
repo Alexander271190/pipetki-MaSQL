@@ -722,13 +722,6 @@ tbody tr:has(.row-checkbox:checked):hover {
   cursor: not-allowed;
 }
 
-/* ========== АВТОБЭКАП ========== */
-#auto-backup-status {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #f0f9ff;
-  border-left: 3px solid #0ea5e9;
-}
 
 /* ========== МОБИЛЬНАЯ АДАПТАЦИЯ ========== */
 @media (max-width: 768px) {
