@@ -98,14 +98,14 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
 });
 
 // Обновление
-router.put('/:id', authenticate, requirePermission('manage_pipettes'), async (req, res) => {
-  const updates = req.body;
   const map = {
     serial: 'serial', manufacturer: 'manufacturer', model: 'model', volume: 'volume',
     department: 'department', subdivision: 'subdivision',
     interval: '`interval`', lastCalibration: 'last_calibration',
     cert: 'cert', lastResult: 'last_result', active: 'active',
-    responsible: 'responsible', location: 'location', notes: 'notes'
+    responsible: 'responsible', location: 'location', notes: 'notes',
+    sentForCalibration: 'sent_for_calibration',
+    sentNote: 'sent_note'
   };
 
   const fields = [];
