@@ -67,7 +67,7 @@ router.post('/', authenticate, requirePermission('manage_pipettes'), async (req,
       `INSERT INTO pipettes
         (id, serial, manufacturer, model, volume, department, \`interval\`,
          last_calibration, cert, last_result, active, responsible, location, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, )`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )`,
       [id, serial, manufacturer, model, volume, department, interval || 12,
        lastCalibration, cert, result || 'pass', active !== false ? 1 : 0,
        responsible, location, notes]
@@ -177,7 +177,7 @@ router.post('/bulk-send', authenticate, requirePermission('manage_pipettes'), as
     return res.status(400).json({ error: 'Дата отправки обязательна' });
   }
   if (ids.length > 100) {
-    return res.status(400).json({ error: 'Слишком много единиц за раз' (максимум 100)' });
+    return res.status(400).json({ error: 'Слишком много единиц за раз (максимум 100)' });
   }
 
   const conn = await db.getConnection();
@@ -257,7 +257,7 @@ router.post('/bulk-return', authenticate, requirePermission('manage_pipettes'), 
     return res.status(400).json({ error: 'Дата поверки обязательна' });
   }
   if (items.length > 100) {
-    return res.status(400).json({ error: 'Слишком много единиц за раз' (максимум 100)' });
+   return res.status(400).json({ error: 'Слишком много единиц за раз (максимум 100)' });
   }
 
   const conn = await db.getConnection();
