@@ -932,7 +932,7 @@ async function savePipette(e) {
     data.active = data.active === 'true' || data.active === true;
   }
 
-  if (data.lastCalibration && new Date(data.lastCalibration) > new Date()) {
+  if (data.lastCalibration && data.lastCalibration > todayStr()) {
     showToast('Дата поверки не может быть в будущем', 'error');
     return;
   }
@@ -1157,19 +1157,23 @@ const EXPORT_FIELD_MAP = {
   nextCalibration: { label: 'Следующая', get: p => formatDate(getNextDate(p)) },
   interval: { label: 'МПИ', get: p => p.interval || '' },
   daysLeft: {
-    label: 'Дней', get: p => {
-      const s = calcStatus(p); const dl = daysLeft(p);
-      return s === 'inactive' ? '—' : (s === 'sent' ? 'на поверке' : (dl < 0 ? 'просрочка ' + Math.abs(dl) + ' дн.' : dl + ' дн.'));
-    }
-  },
+  label: 'Дней', get: p => {
+    const s = calcStatus(p); const dl = daysLeft(p);
+    return s === 'inactive' ? '—'
+      : (s === 'sent' ? 'на поверке'
+      : (s === 'fail' ? 'брак'
+      : (dl < 0 ? 'просрочка ' + Math.abs(dl) + ' дн.' : dl + ' дн.')));
+  }
+},
   responsible: { label: 'Ответственный', get: p => p.responsible || '' },
   location: { label: 'Место', get: p => p.location || '' },
   status: {
-    label: 'Статус', get: p => {
-      const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке' };
-      return L[calcStatus(p)] || calcStatus(p);
-    }
-  },
+  label: 'Статус', get: p => {
+    const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке' };
+    return L[calcStatus(p)] || calcStatus(p);
+  const L = { ok: 'В норме', warn: 'Скоро поверка', danger: 'Просрочена', inactive: 'Неактивна', sent: 'На поверке', fail: 'Брак' };
+      }
+},
   cert: { label: 'Свидетельство', get: p => p.cert || '' },
   notes: { label: 'Примечание', get: p => p.notes || '' }
 };
