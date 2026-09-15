@@ -630,3 +630,114 @@ tbody tr:hover { background: #f8fafc; }
 #usr-only-own-dept {
   accent-color: #eab308;
 }
+
+/* ========== КОЛОНКА С ЧЕКБОКСАМИ ========== */
+.col-checkbox {
+  width: 45px;
+  text-align: center;
+  padding: 10px 8px !important;
+}
+
+.col-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #4f46e5;
+  vertical-align: middle;
+}
+
+#select-all-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #ffffff;
+  filter: invert(1) hue-rotate(180deg);
+}
+
+#select-all-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+#select-all-checkbox:indeterminate {
+  filter: none;
+  accent-color: #fbbf24;
+}
+
+tbody tr:has(.row-checkbox:checked) {
+  background: #eef2ff;
+}
+
+tbody tr:has(.row-checkbox:checked):hover {
+  background: #e0e7ff;
+}
+
+/* ========== КНОПКА «ВЕРНУЛИСЬ С ПОВЕРКИ» ========== */
+#btn-bulk-return {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(22,163,74,.2), 0 3px 12px rgba(22,163,74,.35);
+  animation: pulse-return 2s infinite;
+}
+#btn-bulk-return:hover {
+  background: linear-gradient(135deg, #34d16a 0%, #1cb254 100%);
+  box-shadow: 0 6px 20px rgba(22,163,74,.5);
+}
+@keyframes pulse-return {
+  0%, 100% { box-shadow: 0 1px 2px rgba(22,163,74,.2), 0 3px 12px rgba(22,163,74,.35); }
+  50%      { box-shadow: 0 1px 2px rgba(22,163,74,.3), 0 5px 20px rgba(22,163,74,.55); }
+}
+
+/* ========== СТАТУС «НА ПОВЕРКЕ» ========== */
+.status-sent {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 600;
+}
+.status-sent .status-dot {
+  background: #0ea5e9;
+  animation: pulse-dot 1.8s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,.5); }
+  50%      { box-shadow: 0 0 0 6px rgba(14,165,233,0); }
+}
+
+/* ========== ИНПУТ СВИДЕТЕЛЬСТВА В МОДАЛКЕ ВОЗВРАТА ========== */
+.bulk-return-cert-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: .85rem;
+  font-family: inherit;
+}
+.bulk-return-cert-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+}
+.bulk-return-cert-input:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+}
+
+/* ========== АВТОБЭКАП ========== */
+#auto-backup-status {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f0f9ff;
+  border-left: 3px solid #0ea5e9;
+}
+
+/* ========== МОБИЛЬНАЯ АДАПТАЦИЯ ========== */
+@media (max-width: 768px) {
+  .col-checkbox {
+    width: 36px;
+    padding: 8px 4px !important;
+  }
+  .col-checkbox input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+  }
+}
