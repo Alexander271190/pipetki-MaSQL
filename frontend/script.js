@@ -1599,9 +1599,7 @@ async function renderFieldsSettings(skipFetch = false) {
         </select></td>
         <td style="text-align:center;"><input type="checkbox" ${f.required ? 'checked' : ''} onchange="_cachedFields[${i}].required=this.checked"></td>
         <td style="text-align:center;"><input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="_cachedFields[${i}].enabled=this.checked"></td>
-        <td>${f.type === 'select'
-          ? `<textarea rows="2" onchange="_cachedFields[${i}].options=this.value.split('\\n').map(s=>s.trim()).filter(Boolean)">${esc((f.options || []).join('\n'))}</textarea>`
-          : '—'}</td>
+       <td>${renderFieldOptionsCell(i, f.type)}</td>
         <td><button class="btn btn-danger btn-sm" onclick="deleteFieldSetting(${i})">🗑️</button></td>
       </tr>`;
     });
@@ -1612,6 +1610,18 @@ async function renderFieldsSettings(skipFetch = false) {
   } catch (e) {
     c.innerHTML = '<p style="color:#dc2626;">Ошибка: ' + e.message + '</p>';
   }
+}
+function renderFieldOptionsCell(idx, type) {
+  if (type === 'select') {
+    const opts = (_cachedFields[idx].options || []).join('\n');
+    return `<textarea rows="2" onchange="_cachedFields[${idx}].options=this.value.split('\\n').map(s=>s.trim()).filter(Boolean)">${esc(opts)}</textarea>`;
+  }
+  return '—';
+}
+function onFieldTypeChange(idx, type) {
+  _cachedFields[idx].type = type;
+  const row = document.querySelector('.field-settings-table tbody').children[idx];
+  if (row) row.children[5].innerHTML = renderFieldOptionsCell(idx, type);
 }
 
 function moveFieldSetting(idx, dir) {
@@ -1829,8 +1839,8 @@ async function renderFiltersSettings(skipFetch = false) {
         </td>
         <td><input type="text" value="${esc(f.label)}" 
                    onchange="_cachedFilters[${i}].label=this.value"></td>
-        <td>
-          <td><select onchange="onFieldTypeChange(${i}, this.value)">
+        
+         <td><select onchange="_cachedFilters[${i}].type=this.value">
             <option value="text" ${f.type === 'text' ? 'selected' : ''}>Текст</option>
             <option value="select" ${f.type === 'select' ? 'selected' : ''}>Список</option>
             <option value="date-period" ${f.type === 'date-period' ? 'selected' : ''}>Период дат</option>
@@ -1844,8 +1854,9 @@ async function renderFiltersSettings(skipFetch = false) {
             <option value="active_list" ${f.optionsSource === 'active_list' ? 'selected' : ''}>Активность</option>
           </select>
         </td>
+        </td>
         <td><button class="btn btn-danger btn-sm btn-icon-only" 
-                    onclick="deleteFilter(${i})" title="Удалить">
+         onclick="deleteFilter(${i})" title="Удалить">
           <i class="fa-solid fa-trash"></i>
         </button></td>
       </tr>`;
