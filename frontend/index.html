@@ -243,6 +243,73 @@
     </form>
   </div>
 </div> 
+  
+  <!-- МОДАЛКА МАССОВОГО ВОЗВРАТА -->
+<div class="modal-overlay" id="bulk-return-modal">
+  <div class="modal modal-lg">
+    <h2>📥 Возврат с поверки</h2>
+
+    <div style="margin-bottom:15px;padding:12px;background:#ecfdf5;border-left:3px solid #16a34a;border-radius:8px;font-size:.9rem;">
+      <strong>Возвращается пипеток:</strong> <span id="bulk-return-count">0</span>
+    </div>
+
+    <form id="bulk-return-form" onsubmit="saveBulkReturn(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Дата поверки *</label>
+          <input type="date" id="bulk-return-date" required>
+        </div>
+        <div class="form-group">
+          <label>Поверяющая организация</label>
+          <input type="text" id="bulk-return-org" placeholder="напр. ФБУ «Красноярский ЦСМ»">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Результат (общий для всех)</label>
+          <select id="bulk-return-result" onchange="applyBulkReturnResult(this.value)">
+            <option value="pass">✅ Годен</option>
+            <option value="fail">❌ Брак</option>
+            <option value="wip">⏳ В процессе</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px;background:#f0f9ff;border-radius:8px;width:100%;font-weight:600;color:#0369a1;">
+            <input type="checkbox" id="bulk-return-single-cert" 
+                   style="width:18px;height:18px;"
+                   onchange="toggleSingleCert(this.checked)">
+            Одно свидетельство на всех
+          </label>
+        </div>
+      </div>
+
+      <div id="bulk-return-common-cert" style="display:none;">
+        <div class="form-group">
+          <label>Номер общего свидетельства</label>
+          <input type="text" id="bulk-return-cert" placeholder="напр. С-АБ-1234567/2026">
+        </div>
+      </div>
+
+      <div id="bulk-return-items-container" style="margin:15px 0;"></div>
+
+      <div class="form-group">
+        <label>Примечание (общее для всех)</label>
+        <textarea id="bulk-return-note" rows="2" 
+                  placeholder="например: без замечаний, годны к эксплуатации"></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeBulkReturnModal()">
+          Отмена
+        </button>
+        <button type="submit" class="btn btn-success">
+          💾 Применить ко всем
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <div class="modal-overlay" id="history-modal">
   <div class="modal modal-lg">
