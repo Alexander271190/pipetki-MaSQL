@@ -14,26 +14,60 @@ router.get('/departments', authenticate, async (req, res) => {
 
 router.put('/departments', authenticate, requireRole(['admin']), async (req, res) => {
   const departments = req.body;
-  if (!Array.isArray(departments)) return res.status(400).json({ error: 'Ожидается массив' });
+  if (!Array.isArray(departments)) {
+    return res.status(400).json({ error: 'Ожидается массив' });
+  }
+
+  // Проверка: собираем имена, ищем дубли (без учёта регистра)
+  const seen = new Set();
+  const duplicates = [];
+
+  for (const d of departments) {
+    const name = typeof d === 'string' ? d : (d && d.name ? d.name : '');
+    const trimmed = String(name).trim();
+    if (!trimmed) continue;
+
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      duplicates.push(trimmed);
+    } else {
+      seen.add(key);
+    }
+  }
+
+  // Если дубли есть — отклоняем с понятной ошибкой
+  if (duplicates.length > 0) {
+    return res.status(400).json({
+      error: 'Дубли отделов: ' + [...new Set(duplicates)].join(', ')
+    });
+  }
+
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query('DELETE FROM departments');
+
     for (const d of departments) {
-      const name = d.name || d;
-      const enabled = d.enabled !== false ? 1 : 0;
-      if (name && name.trim()) {
-        await conn.query(
-          'INSERT INTO departments (name, enabled) VALUES (?, ?)',
-          [name.trim(), enabled]
-        );
-      }
+      const name = typeof d === 'string' ? d : (d && d.name ? d.name : '');
+      const enabled = (typeof d === 'object' && d.enabled === false) ? 0 : 1;
+      const trimmed = String(name).trim();
+      if (!trimmed) continue;
+
+      await conn.query(
+        'INSERT INTO departments (name, enabled) VALUES (?, ?)',
+        [trimmed, enabled]
+      );
     }
+
     await conn.commit();
     res.json({ message: 'Отделы обновлены' });
   } catch (e) {
     await conn.rollback();
-    res.status(500).json({ error: 'Ошибка обновления отделов' });
+    console.error('Ошибка обновления отделов:', e.message, '| code:', e.code);
+    res.status(500).json({
+      error: 'Ошибка обновления отделов',
+      details: e.message
+    });
   } finally {
     conn.release();
   }
