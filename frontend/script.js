@@ -265,8 +265,8 @@ async function loadFilterConfig() {
             { value: 'warn', label: 'Скоро поверка' },
             { value: 'danger', label: 'Просрочены' },
             { value: 'inactive', label: 'Неактивны' },
-            { value: 'sent', label: '📦 На поверке' }
-            { value: 'fail', label: '❌ Брак' },
+            { value: 'sent', label: '📦 На поверке' },
+            { value: 'fail', label: '❌ Брак' }
           ];
         } else if (f.optionsSource === 'active_list') {
           f.options = [
