@@ -734,3 +734,11 @@ tbody tr:has(.row-checkbox:checked):hover {
     height: 20px;
   }
 }
+.status-fail {
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+}
+.status-fail .status-dot {
+  background: #dc2626;
+}
