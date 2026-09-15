@@ -690,7 +690,7 @@ function getFilteredPipettes() {
   const userDept = currentUser && currentUser.onlyOwnDepartment ? currentUser.department : null;
 
   return pipettes.filter(p => {
-    const s = `${p.id} ${p.serial || ''} ${p.model} ${p.manufacturer || ''}  ${p.responsible || ''}`.toLowerCase();
+    const s = `${p.id} ${p.serial || ''} ${p.model} ${p.manufacturer || ''} ${p.department || ''} ${p.responsible || ''}`.toLowerCase();
     if (search && !s.includes(search)) return false;
     if (userDept && p.department !== userDept) return false;
 
